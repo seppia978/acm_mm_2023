@@ -84,14 +84,14 @@ def hook_fn(model, input, output):
 
 def parameters_distance(model:nn.Module, other:nn.Module, kind:str = 'l2'):
         ret = []
-
+        
         for i, ((n,x),(n1,x1)) in enumerate(zip(model.model.named_parameters(), other.named_parameters())):
             x, x1 = x.cuda(), x1.cuda()
             if kind.lower() == 'l2':
                     ret.append(
                         (torch.linalg.norm(
                             torch.pow(x - x1, 2)
-                        ) * model.weights[i])
+                        ))
                         .unsqueeze(0)
                     )
             elif kind.lower() == 'kl-div':
@@ -210,7 +210,7 @@ def main(args):
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
-            model = model.arch
+            model = MyModel(model.arch)
             general = wfmodels.WFCNN(
                 kind=wfmodels.vgg16, pretrained=True,
                 m=hyperparams['alpha_init'], resume=None,
@@ -261,7 +261,7 @@ def main(args):
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
-            model = model.arch
+            model = MyModel(model.arch)
 
             general = wfmodels.WFTransformer(
                 kind=wfmodels.vit_small_16224, pretrained=True,
@@ -276,7 +276,7 @@ def main(args):
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
-            model = model.arch
+            model = MyModel(model.arch)
             general = wfmodels.WFTransformer(
                 kind=wfmodels.vit_tiny_16224, pretrained=True,
                 m=hyperparams['alpha_init'], resume=None,
@@ -954,7 +954,6 @@ def main(args):
                     # * computes the final loss
                     # * loss = lambda_0 * loss_ret^2 + lambda_1 * 1 / (loss_unl) + lambda_2 * alpha_norm
 
-                    model.weights = torch.sigmoid(torch.clamp(model.weights, min=-3., max=3.))
                     if hyp['loss_type'] == 'difference':
                         keep = kept_loss.clone()
                         unlearn = unlearnt_loss.clone()
@@ -974,9 +973,10 @@ def main(args):
                             loss_train = loss_cls + loss_reg
                         elif 'zero' in hyp['loss_type']:
                             loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
-                            loss_reg = torch.pow(parameters_distance(model, standard, kind='l2'), 2).max(0).values
+                            loss_reg = torch.pow(parameters_distance(model, standard, kind='l2'), 2)
+                            loss_reg_weighted = (loss_reg * model.weights).mean(0)
                             alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
-                            loss_train = hyp['lambda0'] * loss_reg + hyp['lambda1'] * loss_cls
+                            loss_train = hyp['lambda0'] * loss_reg_weighted + hyp['lambda1'] * loss_cls
 
                         elif 'third' in hyp['loss_type']:
                             loss_cls = hyp['lambda0'] * keep.mean() * (1 - hyp['lambda1'] / torch.abs(unlearn.mean())) # l+ * (1 - lambda1/l-)
@@ -1008,16 +1008,18 @@ def main(args):
 
                     # * clipping alpha values between max and min
                     # model.clip_alphas() # clip alpha vals
+                    model.weights.data = torch.relu(model.weights)
 
                     # * wandb loggings
                     if not debug:
                         # run.log({'alpha_norm': alpha_norm})
-                        run.log({'loss_untrain': loss_train})
-                        run.log({'loss_cls': loss_cls})
+                        run.log({'loss': loss_train})
+                        run.log({'unlearning_loss': loss_cls})
                         # run.log({'train_keep': keep.mean()})
-                        run.log({'reg': loss_reg})
-                        run.log({'train_unlearn': torch.abs(unlearn.mean())})
-                        run.log({'weights_mean': model.weights.mean()})
+                        run.log({'retaining_loss': loss_reg_weighted})
+                        run.log({'layer_distance_sum': loss_reg.sum()})
+                        run.log({'unlearning_factor': torch.abs(unlearn.mean())})
+                        run.log({'weights_mean': model.weights.abs().mean()})
                         # run.log({'l1c1_alpha_max': tuple(model.get_all_alpha_layers().values())[0].max()})
                         # run.log({'l1c1_alpha_min': tuple(model.get_all_alpha_layers().values())[0].min()})
 
@@ -1194,6 +1196,7 @@ def main(args):
         PATH = f"{run_root}/final.pt"
         torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
+        print(model.weights)
 
         x=0
 
