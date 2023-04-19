@@ -953,6 +953,8 @@ def main(args):
 
                     # * computes the final loss
                     # * loss = lambda_0 * loss_ret^2 + lambda_1 * 1 / (loss_unl) + lambda_2 * alpha_norm
+
+                    model.weights = torch.sigmoid(torch.clamp(model.weights, min=-3., max=3.))
                     if hyp['loss_type'] == 'difference':
                         keep = kept_loss.clone()
                         unlearn = unlearnt_loss.clone()
@@ -1015,6 +1017,7 @@ def main(args):
                         # run.log({'train_keep': keep.mean()})
                         run.log({'reg': loss_reg})
                         run.log({'train_unlearn': torch.abs(unlearn.mean())})
+                        run.log({'weights_mean': model.weights.mean()})
                         # run.log({'l1c1_alpha_max': tuple(model.get_all_alpha_layers().values())[0].max()})
                         # run.log({'l1c1_alpha_min': tuple(model.get_all_alpha_layers().values())[0].min()})
 
