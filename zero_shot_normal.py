@@ -7,7 +7,7 @@ import torchvision.models as models
 import torch.nn.functional as FF
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as F
-from pl_bolts.transforms.dataset_normalizations import cifar10_normalization
+# from pl_bolts.transforms.dataset_normalizations import cifar10_normalization
 import math
 from datetime import datetime
 import wandb
@@ -85,13 +85,13 @@ def hook_fn(model, input, output):
 def parameters_distance(model:nn.Module, other:nn.Module, kind:str = 'l2'):
         ret = []
 
-        for i, ((n,x),(n1,x1)) in enumerate(zip(model.named_parameters(), other.named_parameters())):
+        for i, ((n,x),(n1,x1)) in enumerate(zip(model.model.named_parameters(), other.named_parameters())):
             x, x1 = x.cuda(), x1.cuda()
             if kind.lower() == 'l2':
                     ret.append(
                         (torch.linalg.norm(
                             torch.pow(x - x1, 2)
-                        ) * math.pow(len(list(model.named_parameters())) - i,2))
+                        ) * model.weights[i])
                         .unsqueeze(0)
                     )
             elif kind.lower() == 'kl-div':
@@ -102,6 +102,16 @@ def parameters_distance(model:nn.Module, other:nn.Module, kind:str = 'l2'):
                     )
 
         return torch.cat(ret, 0)
+
+class MyModel(nn.Module):
+   def __init__(self, model):
+     super(MyModel, self).__init__()
+     self.model = model
+     self.weights = nn.Parameter(torch.ones(len(tuple(model.parameters())), dtype=torch.float))
+     
+
+   def forward(self, *args, **kwargs):
+     return self.model.forward(*args, **kwargs)
 
 def main(args):
 
@@ -226,7 +236,7 @@ def main(args):
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
-            model = model.arch
+            model = MyModel(model.arch)
             general = wfmodels.WFCNN(
                 kind=wfmodels.resnet18, pretrained=True,
                 m=hyperparams['alpha_init'], resume=None,
@@ -390,15 +400,28 @@ def main(args):
 
             c_to_del = [3]
 
+            id_c = np.where(np.isin(np.array(
+                _val.targets
+                ), c_to_del))[0]
+            val_c = Subset(_val, id_c)
+            val_c.targets = torch.Tensor(_val.targets).long()[id_c].tolist()
+
+            id_ot = np.where(~np.isin(np.array(
+                _val.targets
+                ), c_to_del))[0]
+            val_ot = Subset(_val, id_ot)
+            val_ot.targets = torch.Tensor(_val.targets).long()[id_ot].tolist()
+
             if 'zero' in hyperparams['loss_type']:
 
                 id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
-                val_c = Subset(_train, id_c)
-                val_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
+                train_c = Subset(_train, id_c)
+                train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
 
-                train, val = val_c, _val
+                train = train_c
             else:
-                train,val = _train,_val
+                train = _train
+            val = (val_c, val_ot)
 
 
         elif 'cifar20' in dataset.lower():
@@ -508,13 +531,19 @@ def main(args):
 
             class CIFAR20(CIFAR100):
 
-                def __init__(self, root, train=True, transform=None, target_transform=None, download=False):
+                def __init__(self, root, c_to_del=[], train=True, transform=None, target_transform=None, download=False):
                     super().__init__(root, train, transform, _cifar100_to_cifar20, download)
 
-
             def _cifar100_to_cifar20(target):
-                
-                return class_mapping_dict[target]
+                mapping = class_mapping_dict[target]
+                return mapping
+            
+            def _cifar20_from_cifar100(target):
+                mapping = _cifar100_to_cifar20(target)
+                demapping = [x for x,v in mapping if v==target[0]]
+
+                return demapping
+
 
             means = (0.4914, 0.4822, 0.4465)
             stds = (0.2023, 0.1994, 0.2010)
@@ -533,17 +562,31 @@ def main(args):
                 transforms.Normalize(means, stds),
             ])
 
+            c_to_del = [3]
+
             _train = CIFAR20(
                 root='/work/dnai_explainability/unlearning/datasets/cifar20_classification/train',
-                transform=T, download=True, train=True
+                transform=T, download=True, train=True, c_to_del=c_to_del
             )
 
             _val = CIFAR20(
                 root='/work/dnai_explainability/unlearning/datasets/cifar20_classification/val',
-                transform=transform_test, download=True, train=False
+                transform=transform_test, download=True, train=False, c_to_del=c_to_del
             )
 
-            c_to_del = [3]
+            id_c = np.where(np.isin(np.array(
+                tuple(map(_cifar100_to_cifar20, _val.targets))
+                ), c_to_del))[0]
+            val_c = Subset(_val, id_c)
+            val_c.targets = torch.Tensor(_val.targets).long()[id_c].tolist()
+            val_c.targets = map(_cifar100_to_cifar20, val_c.targets)
+
+            id_ot = np.where(~np.isin(np.array(
+                tuple(map(_cifar100_to_cifar20, _val.targets))
+                ), c_to_del))[0]
+            val_ot = Subset(_val, id_ot)
+            val_ot.targets = torch.Tensor(_val.targets).long()[id_ot].tolist()
+            val_ot.targets = map(_cifar100_to_cifar20, val_ot.targets)
 
             if 'zero' in hyperparams['loss_type']:
 
@@ -553,10 +596,11 @@ def main(args):
                 train_c = Subset(_train, id_c)
                 train_c.targets = torch.Tensor(_train.targets).long()[id_c].tolist()
                 train_c.targets = map(_cifar100_to_cifar20, train_c.targets)
-
-                train, val = train_c, _val
+                
+                train = train_c
             else:
-                train,val = _train,_val
+                train = _train
+            val = (val_c, val_ot)
 
         elif dataset.lower() == 'mnist':
 
@@ -927,10 +971,10 @@ def main(args):
                             loss_reg = torch.pow(hyp['lambda0'] * keep.mean(),2)
                             loss_train = loss_cls + loss_reg
                         elif 'zero' in hyp['loss_type']:
-                            loss_cls = torch.pow(hyp['lambda1'] / (unlearn.mean() + 1e-8), 1)
-                            loss_reg = torch.pow(hyp['lambda0'] * parameters_distance(model, standard, kind='l2'), 2).max(0).values
+                            loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
+                            loss_reg = torch.pow(parameters_distance(model, standard, kind='l2'), 2).max(0).values
                             alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
-                            loss_train = loss_cls + loss_reg + alpha_norm
+                            loss_train = hyp['lambda0'] * loss_reg + hyp['lambda1'] * loss_cls
 
                         elif 'third' in hyp['loss_type']:
                             loss_cls = hyp['lambda0'] * keep.mean() * (1 - hyp['lambda1'] / torch.abs(unlearn.mean())) # l+ * (1 - lambda1/l-)
@@ -967,9 +1011,9 @@ def main(args):
                     if not debug:
                         # run.log({'alpha_norm': alpha_norm})
                         run.log({'loss_untrain': loss_train})
-                        run.log({'loss_cls': loss_cls/hyp['lambda1']})
+                        run.log({'loss_cls': loss_cls})
                         # run.log({'train_keep': keep.mean()})
-                        run.log({'reg': loss_reg/hyp['lambda0']})
+                        run.log({'reg': loss_reg})
                         run.log({'train_unlearn': torch.abs(unlearn.mean())})
                         # run.log({'l1c1_alpha_max': tuple(model.get_all_alpha_layers().values())[0].max()})
                         # run.log({'l1c1_alpha_min': tuple(model.get_all_alpha_layers().values())[0].min()})
@@ -999,7 +1043,7 @@ def main(args):
                         print(f'Validation step {idx}')
 
                         # * defining max number of validation images
-                        max_val_size = min(hyp['max_val_size'], len(val))
+                        max_val_size = min(hyp['max_val_size'], len(val[0]))
 
                         # val_loader = DataLoader(
                         #     random_split(val, [max_val_size, len(val)-max_val_size])[0],
@@ -1008,18 +1052,20 @@ def main(args):
 
                         # * selecting the unlearning and the retaining validation sets
                         # * useless in the multiclass case
-                        id_c = np.where(np.isin(np.array(val.targets), c_to_del))[0]
-                        id_others = np.where(~ np.isin(np.array(val.targets), c_to_del))[0]
+                        # id_c = np.where(np.isin(np.array(val.targets), c_to_del))[0]
+                        # id_others = np.where(~ np.isin(np.array(val.targets), c_to_del))[0]
 
-                        val_c = Subset(val, id_c)
-                        val_others = Subset(val, id_others)
+                        # val_c = Subset(val, id_c)
+                        # val_others = Subset(val, id_others)
 
-                        val_c.targets = torch.Tensor(val.targets).int()[id_c].tolist()
-                        val_others.targets = torch.Tensor(val.targets).int()[id_others].tolist()
+                        # val_c.targets = torch.Tensor(val.targets).int()[id_c].tolist()
+                        # val_others.targets = torch.Tensor(val.targets).int()[id_others].tolist()
 
                         # concat_val = data.ConcatDataset((val_c,val_others))
                         # concat_val.targets = [*val_c.targets, *val_others.targets]
 
+
+                        val_c, val_others = val
                         u_val_loader = DataLoader(
                             random_split(val_c, [max_val_size, len(val_c)-max_val_size])[0],
                             batch_size=batch_val, num_workers=4, shuffle=True
