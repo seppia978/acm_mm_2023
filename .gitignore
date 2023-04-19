@@ -1,0 +1,4 @@
+custom_archs/non_imagenet_models/__pycache__
+custom_archs/__pycache__
+wandb/
+.vscode/
