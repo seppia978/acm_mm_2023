@@ -710,8 +710,9 @@ def main(args):
         
         # model.requires_grad_(requires_grad=False)
         # model = convert_conv2d_to_alpha(model, m=hyperparams['alpha_init'])
-
-        root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
+        
+        # root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
+        root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
 
         if not os.path.isdir(os.path.join(root,wdb_proj)):
             os.mkdir(os.path.join(root,wdb_proj))
