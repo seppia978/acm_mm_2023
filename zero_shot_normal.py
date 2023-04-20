@@ -176,7 +176,7 @@ def main(args):
         cls_loss = nn.CrossEntropyLoss
 
     LM = loss_manager.loss.LossManager(
-        loss_type='3way_sum',lambdas=[hyperparams[l] for l in hyperparams.keys() if 'lambda' in l],
+        loss_type=loss_type,lambdas=[hyperparams[l] for l in hyperparams.keys() if 'lambda' in l],
         classification_loss_fn = cls_loss, logits=logits
     )
 
@@ -198,7 +198,7 @@ def main(args):
 
     ret_acc, unl_acc = torch.zeros(1), torch.zeros(1)
 
-    all_classes = range(1)
+    all_classes = range(10)
 
     for class_to_delete in all_classes:
 
@@ -988,7 +988,12 @@ def main(args):
                         elif 'zero' in hyp['loss_type']:
                             loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
                             loss_reg = torch.pow(parameters_distance(model, standard, kind='l2'), 2)
-                            loss_reg_weighted = (loss_reg * model.weights).sum()
+                            weights = torch.tensor(tuple(
+                                math.pow(
+                                len(tuple(model.model.parameters())) - i, 2
+                                ) for i in range(len(tuple(model.model.parameters())))
+                            ), device=device)
+                            loss_reg_weighted = (loss_reg * weights).sum()
                             # loss_reg_weighted = loss_reg
                             alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
                             loss_train = hyp['lambda0'] * loss_reg_weighted + hyp['lambda1'] * loss_cls
@@ -1175,8 +1180,8 @@ def main(args):
                         if not debug:
                             run.log({'best_val_acc': best_acc})
                             run.log({'current_val_acc': current_acc})
-                            run.log({'best_acc_ret': mean_acc_keep})
-                            run.log({'best_acc_ret': mean_acc_forget})
+                            run.log({'best_acc_ret': best_acc_both[0]})
+                            run.log({'best_acc_unl': best_acc_both[1]})
 
                         if should_stop:
                             print(f'mean_unl: {mean_acc_forget}, current: {currents}, best: {best_acc}, patience: {patience}')
