@@ -603,7 +603,6 @@ class WFTransformer(WFModel):
             
             if kind == vit_small_16224:
                 self.arch = ViT(
-                    channels=1,
                     image_size = 32,
                     patch_size = 4,
                     num_classes = classes_number,

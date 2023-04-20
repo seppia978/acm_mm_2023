@@ -360,7 +360,11 @@ def main(args):
             val = Subset(_val, idx_val)
 
             train.targets = torch.Tensor(_val.targets).int()[idx_train].tolist()
+            
+            # TODO: split val in unlearning and retaining
             val.targets = torch.Tensor(_val.targets).int()[idx_val].tolist()
+            train.num_classes = 1000
+            val[0].num_classes, val[1].num_classes = 1000, 1000
 
 
         elif 'cifar10' in dataset.lower():
@@ -422,6 +426,8 @@ def main(args):
             else:
                 train = _train
             val = (val_c, val_ot)
+            train.num_classes = 10
+            val[0].num_classes, val[1].num_classes = 10, 10
 
 
         elif 'cifar20' in dataset.lower():
@@ -601,6 +607,8 @@ def main(args):
             else:
                 train = _train
             val = (val_c, val_ot)
+            train.num_classes = 20
+            val[0].num_classes, val[1].num_classes = 20, 20
 
         elif dataset.lower() == 'mnist':
 
@@ -704,6 +712,8 @@ def main(args):
             # _train = train
 
             train, val = _train, _val
+            train.num_classes = 10
+            val.num_classes = 10
 
         classes_number = len(_val.classes)
 
@@ -711,8 +721,8 @@ def main(args):
         # model.requires_grad_(requires_grad=False)
         # model = convert_conv2d_to_alpha(model, m=hyperparams['alpha_init'])
         
-        # root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
-        root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
+        root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
+        # root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
 
         if not os.path.isdir(os.path.join(root,wdb_proj)):
             os.mkdir(os.path.join(root,wdb_proj))
@@ -814,7 +824,7 @@ def main(args):
                 if 'zero' not in hyp['loss_type']:
                     y_train = train.targets  # train.datasets[0].dataset.targets
                     
-                    weight = 1. / torch.Tensor([1/len(train.classes) for _ in range(len(train.classes))])
+                    weight = 1. / torch.Tensor([1/len(train.num_classes) for _ in range(train.num_classes)])
                     
                     weight[~np.isin(list(range(len(weight))), np.array(c_to_del))] = .5 / (len(weight) - len(c_to_del))
                     weight[np.array(c_to_del)] = .5 / len(c_to_del)
@@ -975,7 +985,8 @@ def main(args):
                         elif 'zero' in hyp['loss_type']:
                             loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
                             loss_reg = torch.pow(parameters_distance(model, standard, kind='l2'), 2)
-                            loss_reg_weighted = (loss_reg * model.weights).mean(0)
+                            loss_reg_weighted = (loss_reg * model.weights).sum()
+                            # loss_reg_weighted = loss_reg
                             alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
                             loss_train = hyp['lambda0'] * loss_reg_weighted + hyp['lambda1'] * loss_cls
 
@@ -1009,7 +1020,7 @@ def main(args):
 
                     # * clipping alpha values between max and min
                     # model.clip_alphas() # clip alpha vals
-                    model.weights.data = torch.relu(model.weights)
+                    # model.weights.data = torch.relu(model.weights)
 
                     # * wandb loggings
                     if not debug:
@@ -1161,6 +1172,8 @@ def main(args):
                         if not debug:
                             run.log({'best_val_acc': best_acc})
                             run.log({'current_val_acc': current_acc})
+                            run.log({'best_acc_ret': mean_acc_keep})
+                            run.log({'best_acc_ret': mean_acc_forget})
 
                         if should_stop:
                             print(f'mean_unl: {mean_acc_forget}, current: {currents}, best: {best_acc}, patience: {patience}')
