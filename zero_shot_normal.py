@@ -983,6 +983,7 @@ def main(args):
                         elif 'sum' in hyp['loss_type']:
                             loss_cls = torch.pow(hyp['lambda1']/(unlearn.mean()+1e-8),1)
                             loss_reg = torch.pow(hyp['lambda0'] * keep.mean(),2)
+                            loss_reg_weighted = loss_reg
                             loss_train = loss_cls + loss_reg
                         elif 'zero' in hyp['loss_type']:
                             loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
