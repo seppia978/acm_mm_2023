@@ -198,9 +198,6 @@ def main(args):
 
     ret_acc, unl_acc = torch.zeros(1), torch.zeros(1)
 
-<<<<<<< HEAD
-    all_classes = range(10)
-=======
     if 'cifar10' in dataset.lower():
         c_number = 10
     elif 'cifar20' in dataset.lower():
@@ -210,7 +207,6 @@ def main(args):
         return -1
     
     all_classes = range(c_number)
->>>>>>> fcec269167ad67608efaf8eee3c5e0ca59be86df
 
     for class_to_delete in all_classes:
 
@@ -735,8 +731,8 @@ def main(args):
         # model.requires_grad_(requires_grad=False)
         # model = convert_conv2d_to_alpha(model, m=hyperparams['alpha_init'])
         
-        # root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
-        root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
+        root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
+        # root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
 
         if not os.path.isdir(os.path.join(root,wdb_proj)):
             os.mkdir(os.path.join(root,wdb_proj))
@@ -1192,13 +1188,8 @@ def main(args):
                         if not debug:
                             run.log({'best_val_acc': best_acc})
                             run.log({'current_val_acc': current_acc})
-<<<<<<< HEAD
                             run.log({'best_acc_ret': best_acc_both[0]})
                             run.log({'best_acc_unl': best_acc_both[1]})
-=======
-                            run.log({'best_acc_ret': mean_acc_keep})
-                            run.log({'best_acc_unl': mean_acc_forget})
->>>>>>> fcec269167ad67608efaf8eee3c5e0ca59be86df
 
                         if should_stop:
                             print(f'mean_unl: {mean_acc_forget}, current: {currents}, best: {best_acc}, patience: {patience}')
@@ -1237,8 +1228,8 @@ def main(args):
         print(f'Saved at {PATH}')
         # print(model.weights)
         wandb.log({
-            "mean_ret_acc": ret_acc/len(tuple(all_classes)),
-            "mean_unl_acc": unl_acc/len(tuple(all_classes))
+            "mean_ret_acc": ret_acc/class_to_delete,
+            "mean_unl_acc": unl_acc/class_to_delete
         })
 
         x=0
