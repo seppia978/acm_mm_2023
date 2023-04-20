@@ -402,7 +402,7 @@ def main(args):
                 transform=transform_test, download=True, train=False
             )
 
-            c_to_del = [3]
+            c_to_del = [class_to_delete]
 
             id_c = np.where(np.isin(np.array(
                 _val.targets
@@ -427,6 +427,7 @@ def main(args):
                 train = _train
             val = (val_c, val_ot)
             train.num_classes = 10
+            train.real_targets = train.targets
             val[0].num_classes, val[1].num_classes = 10, 10
 
 
@@ -568,7 +569,7 @@ def main(args):
                 transforms.Normalize(means, stds),
             ])
 
-            c_to_del = [3]
+            c_to_del = [class_to_delete]
 
             _train = CIFAR20(
                 root='/work/dnai_explainability/unlearning/datasets/cifar20_classification/train',
@@ -608,6 +609,7 @@ def main(args):
                 train = _train
             val = (val_c, val_ot)
             train.num_classes = 20
+            train.real_targets = list(map(_cifar100_to_cifar20, train.targets))
             val[0].num_classes, val[1].num_classes = 20, 20
 
         elif dataset.lower() == 'mnist':
@@ -822,7 +824,7 @@ def main(args):
 
                 # * balancing the batch with 50% samples from THE class and 50% from the others
                 if 'zero' not in hyp['loss_type']:
-                    y_train = train.targets  # train.datasets[0].dataset.targets
+                    y_train = train.real_targets  # train.datasets[0].dataset.targets
                     
                     weight = 1. / torch.Tensor([1/train.num_classes for _ in range(train.num_classes)])
                     
@@ -1211,6 +1213,10 @@ def main(args):
         torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
         print(model.weights)
+        wandb.log({
+            "mean_ret_acc": ret_acc/len(tuple(all_classes)),
+            "mean_unl_acc": unl_acc/len(tuple(all_classes))
+        })
 
         x=0
 
