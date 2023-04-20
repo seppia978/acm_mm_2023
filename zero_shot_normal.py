@@ -824,7 +824,7 @@ def main(args):
                 if 'zero' not in hyp['loss_type']:
                     y_train = train.targets  # train.datasets[0].dataset.targets
                     
-                    weight = 1. / torch.Tensor([1/len(train.num_classes) for _ in range(train.num_classes)])
+                    weight = 1. / torch.Tensor([1/train.num_classes for _ in range(train.num_classes)])
                     
                     weight[~np.isin(list(range(len(weight))), np.array(c_to_del))] = .5 / (len(weight) - len(c_to_del))
                     weight[np.array(c_to_del)] = .5 / len(c_to_del)
