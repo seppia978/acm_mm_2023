@@ -1,4 +1,6 @@
 import os
+from typing import Union
+from collections.abc import Iterable
 import torch
 
 from torch.utils.data import Dataset
@@ -78,10 +80,10 @@ def hook_fn(model, input, output):
     global hooked_tensor
     hooked_tensor = output.data
 
-def parameters_distance(model:nn.Module, other:nn.Module, kind:str = 'l2'):
+def parameters_distance(model:Union[torch.Tensor, Iterable], other:Union[torch.Tensor, Iterable], kind:str = 'l2'):
         ret = []
         
-        for i, ((n,x),(n1,x1)) in enumerate(zip(model.model.named_parameters(), other.named_parameters())):
+        for i, (x,x1) in enumerate(zip(model, other)):
             x, x1 = x.cuda(), x1.cuda()
             if kind.lower() == 'l2':
                     ret.append(
@@ -727,8 +729,8 @@ def main(args):
         # model.requires_grad_(requires_grad=False)
         # model = convert_conv2d_to_alpha(model, m=hyperparams['alpha_init'])
         
-        # root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
-        root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
+        root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
+        # root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
 
         if not os.path.isdir(os.path.join(root,wdb_proj)):
             os.mkdir(os.path.join(root,wdb_proj))
@@ -991,7 +993,14 @@ def main(args):
                             loss_train = loss_cls + loss_reg
                         elif 'zero' in hyp['loss_type']:
                             loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
-                            loss_reg = torch.pow(parameters_distance(model, standard, kind='l2'), 2)
+                            loss_reg = torch.pow(parameters_distance(
+                                tuple(param.lora_B for param in model.model.modules() \
+                                    if hasattr(param, 'lora_B')),
+                                torch.zeros(len(tuple(param for param in model.model.modules() \
+                                    if hasattr(param, 'lora_B')))),
+                                kind='l2'),
+                                2
+                            )
 
                             if 'fixed' in hyp['loss_type']:
                                 weights = 1.
