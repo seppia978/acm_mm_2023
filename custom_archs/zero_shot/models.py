@@ -209,7 +209,7 @@ class ResNet9(nn.Module):
     A Residual network.
     """
     def __init__(self):
-        super(Net, self).__init__()
+        super(ResNet9, self).__init__()
 
         self.conv = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=64, kernel_size=3, stride=1, padding=1, bias=False),
