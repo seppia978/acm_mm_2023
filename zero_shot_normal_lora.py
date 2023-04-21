@@ -1231,10 +1231,11 @@ def main(args):
         torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
         # print(model.weights)
-        wandb.log({
-            "mean_ret_acc": ret_acc/(class_to_delete+1),
-            "mean_unl_acc": unl_acc/(class_to_delete+1)
-        })
+        if not debug:
+            wandb.log({
+                "mean_ret_acc": ret_acc/(class_to_delete+1),
+                "mean_unl_acc": unl_acc/(class_to_delete+1)
+            })
 
         x=0
 
