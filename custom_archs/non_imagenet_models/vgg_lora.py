@@ -14,9 +14,9 @@ cfg = {
 
 
 class VGG(nn.Module):
-    def __init__(self, vgg_name, num_classes=10):
+    def __init__(self, vgg_name, num_classes=10, lora_r=4):
         super(VGG, self).__init__()
-        self.features = self._make_layers(cfg[vgg_name])
+        self.features = self._make_layers(cfg[vgg_name], lora_r=lora_r)
         self.classifier = nn.Linear(512, num_classes)
 
     def forward(self, x):
@@ -25,7 +25,7 @@ class VGG(nn.Module):
         out = self.classifier(out)
         return out
 
-    def _make_layers(self, cfg):
+    def _make_layers(self, cfg, lora_r=4):
         layers = []
         in_channels = 3
         for x in cfg:
@@ -33,7 +33,7 @@ class VGG(nn.Module):
                 layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
             else:
                 layers += [
-                            lora.Conv2d(in_channels, x, kernel_size=3, padding=1, r=8),
+                            lora.Conv2d(in_channels, x, kernel_size=3, padding=1, r=lora_r),
                             # nn.Conv2d(in_channels, x, kernel_size=3, padding=1),
                             nn.BatchNorm2d(x),
                             nn.ReLU(inplace=True)]
