@@ -996,11 +996,18 @@ def main(args):
                         elif 'zero' in hyp['loss_type']:
                             loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
                             loss_reg = torch.pow(parameters_distance(model, standard, kind='l2'), 2)
-                            weights = torch.tensor(tuple(
-                                math.pow(
-                                len(tuple(model.model.parameters())) - i, 2
-                                ) for i in range(len(tuple(model.model.parameters())))
-                            ), device=device)
+
+                            if 'fixed' in hyp['loss_type']:
+                                weights = 1.
+                            elif 'learnable' in hyp['loss_type']:
+                                weights = model.weights
+                            elif 'inv-square' in hyp['loss_type']:
+                                weights = torch.tensor(tuple(
+                                    math.pow(
+                                    len(tuple(model.model.parameters())) - i, 2
+                                    ) for i in range(len(tuple(model.model.parameters())))
+                                ), device=device)
+                                
                             loss_reg_weighted = (loss_reg * weights).sum()
                             # loss_reg_weighted = loss_reg
                             alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
