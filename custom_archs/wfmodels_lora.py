@@ -11,8 +11,8 @@ from timm.models.vision_transformer import \
     Attention
     
 from .non_imagenet_models.vgg_lora import VGG
-from .non_imagenet_models.resnet import ResNet18, ResNet34
-from .non_imagenet_models.vit import ViT
+from .non_imagenet_models.resnet_lora import ResNet18, ResNet34
+from .non_imagenet_models.vit_lora import ViT
 from .non_imagenet_models.swin import swin_s
 
 from collections.abc import Iterable
@@ -261,7 +261,7 @@ class WFCNN(WFModel):
             self,
             kind=resnet18, pretrained=True, alpha=True, m=.5,
             classes_number=1000, resume=None, dataset=imagenet,
-            baseline_pretrained = True
+            baseline_pretrained = True, lora_r = 4
     ) -> None:
 
         super(WFCNN, self).__init__(
@@ -292,7 +292,7 @@ class WFCNN(WFModel):
         elif cifar10 in dataset:
             classes_number = 10
             if kind == resnet18:
-                self.arch = ResNet18()
+                self.arch = ResNet18(lora_r=lora_r)
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
@@ -310,7 +310,7 @@ class WFCNN(WFModel):
                         )
                     )
             elif kind == vgg16:
-                self.arch = VGG(vgg_name='VGG16')
+                self.arch = VGG(vgg_name='VGG16', lora_r=lora_r)
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
@@ -331,7 +331,7 @@ class WFCNN(WFModel):
             ckp_root = '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20'
 
             if kind == resnet18:
-                self.arch = ResNet18(num_classes=20)
+                self.arch = ResNet18(num_classes=20, lora_r=lora_r)
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
@@ -341,7 +341,7 @@ class WFCNN(WFModel):
                     )
 
             elif kind == vgg16:
-                self.arch = VGG(vgg_name='VGG16', num_classes=20)
+                self.arch = VGG(vgg_name='VGG16', num_classes=20, lora_r=lora_r)
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
@@ -498,7 +498,7 @@ class WFTransformer(WFModel):
     def __init__(
         self, 
         kind=vit_tiny_16224, pretrained=True, alpha=True, m=.5,
-        classes_number=1000, resume=None, dataset=imagenet, baseline_pretrained=True
+        classes_number=1000, resume=None, dataset=imagenet, baseline_pretrained=True, lora_r = 4
     ) -> None:
         
         super(WFTransformer, self).__init__(
@@ -545,7 +545,8 @@ class WFTransformer(WFModel):
                     heads = 8,
                     mlp_dim = 384,
                     dropout = 0.1,
-                    emb_dropout = 0.1
+                    emb_dropout = 0.1,
+                    lora_r = lora_r
                 )
                 acab = torch.load(
                     os.path.join(
@@ -564,7 +565,8 @@ class WFTransformer(WFModel):
                     heads = 8,
                     mlp_dim = 192,
                     dropout = 0.1,
-                    emb_dropout = 0.1
+                    emb_dropout = 0.1,
+                    lora_r = lora_r
                 )
                 acab = torch.load(
                     os.path.join(
@@ -595,7 +597,7 @@ class WFTransformer(WFModel):
                 for k1,k2 in zip(acab,ac):
                     if k2 == k1[7:]:
                         ckp[k2] = acab[k1]
-                self.arch.load_state_dict(ckp)
+                self.arch.load_state_dict(ckp, strict=False) # lora
 
         elif cifar20 in dataset:
             classes_number = 20
@@ -611,7 +613,8 @@ class WFTransformer(WFModel):
                     heads = 8,
                     mlp_dim = 384,
                     dropout = 0.1,
-                    emb_dropout = 0.1
+                    emb_dropout = 0.1,
+                    lora_r = lora_r
                 )
                 if baseline_pretrained:
                     acab = torch.load(
@@ -632,7 +635,8 @@ class WFTransformer(WFModel):
                     heads = 8,
                     mlp_dim = 192,
                     dropout = 0.1,
-                    emb_dropout = 0.1
+                    emb_dropout = 0.1,
+                    lora_r = lora_r
                 )
                 if baseline_pretrained:
                     acab = torch.load(
@@ -649,7 +653,7 @@ class WFTransformer(WFModel):
                 for k1,k2 in zip(acab,ac):
                     if k2 == k1[7:]:
                         ckp[k2] = acab[k1]
-                self.arch.load_state_dict(ckp)
+                self.arch.load_state_dict(ckp, strict=False) # lora
         elif mnist in dataset:
             classes_number = 10
             if kind==vit_small_16224:
