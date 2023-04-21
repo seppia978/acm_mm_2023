@@ -46,7 +46,7 @@ class Attention(nn.Module):
 
         self.attend = nn.Softmax(dim = -1)
         # self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
-        self.to_qkv = lora.MergedLinear(dim, inner_dim * 3, bias = False, r=lora_r, enable_lora=[True, False, True])
+        self.to_qkv = lora.MergedLinear(dim, inner_dim * 3, bias = False, r=lora_r, enable_lora=[True, True, True])
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),

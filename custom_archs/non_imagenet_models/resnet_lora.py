@@ -20,7 +20,7 @@ class BasicBlock(nn.Module):
         self.conv1 = lora.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, r=lora_r)
         self.bn1 = nn.BatchNorm2d(planes)
         # self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
-        self.conv2 = lora.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, r=lora_r)
+        self.conv2 = lora.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, r=lora_r)
         self.bn2 = nn.BatchNorm2d(planes)
 
         self.shortcut = nn.Sequential()
