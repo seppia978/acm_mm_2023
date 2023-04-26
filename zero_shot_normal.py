@@ -87,7 +87,14 @@ def parameters_distance(model:nn.Module, other:nn.Module, kind:str = 'l2'):
         
         for i, ((n,x),(n1,x1)) in enumerate(zip(model.model.named_parameters(), other.named_parameters())):
             x, x1 = x.cuda(), x1.cuda()
-            if kind.lower() == 'l2':
+            if kind.lower() == 'l1':
+                    ret.append(
+                        (torch.linalg.norm(
+                            torch.pow(x - x1, 1)
+                        ))
+                        .unsqueeze(0)
+                    )
+            elif kind.lower() == 'l2':
                     ret.append(
                         (torch.linalg.norm(
                             torch.pow(x - x1, 2)
@@ -195,6 +202,7 @@ def main(args):
     
     root = '//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-13-30/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-19-16'
     PATH = f"{root}/final.pt"
+    run.log({'checkpoint': PATH})
 
     ret_acc, unl_acc = torch.zeros(1), torch.zeros(1)
 
@@ -975,11 +983,32 @@ def main(args):
                     # * computes the final loss
                     # * loss = lambda_0 * loss_ret^2 + lambda_1 * 1 / (loss_unl) + lambda_2 * alpha_norm
 
-                    if hyp['loss_type'] == 'difference':
-                        keep = kept_loss.clone()
-                        unlearn = unlearnt_loss.clone()
-                        loss_cls = hyp['lambda0'] * keep.mean() - hyp['lambda1'] * unlearn.mean()
-                        loss_train = loss_cls.mean()
+                    if 'difference' in hyp['loss_type']:
+                        if 'zero' in hyp['loss_type']:
+                            reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+                            loss_reg = torch.pow(parameters_distance(model, standard, kind=reg_type), 2)
+
+                            if 'fixed' in hyp['loss_type']:
+                                weights = 1.
+                            elif 'learnable' in hyp['loss_type']:
+                                weights = model.weights
+                            elif 'inv-square' in hyp['loss_type']:
+                                weights = torch.tensor(tuple(
+                                    math.pow(
+                                    len(tuple(model.model.parameters())) - i, 2
+                                    ) for i in range(len(tuple(model.model.parameters())))
+                                ), device=device)
+                                
+                            loss_reg_weighted = (loss_reg * weights).sum()
+                        else:
+                            loss_reg_weighted = loss_reg = kept_loss.mean().clone()
+                            loss_cls = unlearnt_loss.mean().clone()
+
+                        unlearn = unlearnt_loss.mean()
+                        loss_cls = unlearnt_loss.mean().clone()
+                        loss_train = hyp['lambda0'] * loss_reg_weighted - hyp['lambda1'] * loss_cls
+
+
                         # loss_train += alpha_norm
                     elif '3way' in hyp['loss_type']:
                         if 'zero' not in hyp['loss_type']:
@@ -1203,7 +1232,8 @@ def main(args):
                             return best_acc_both
                     
                     # * saving intermediate checkpoints
-                    if idx % save_checkpoint_frequency == 0 or best_found:
+                    if best_found:
+                    # if idx % save_checkpoint_frequency == 0 or best_found:
                         #root = '/work/dnai_explainability/unlearning/icml2023'
                         PATH = f"{run_root}/last_intermediate.pt" if not best_found else f"{run_root}/best.pt"
                         # PATH = f"/homes/spoppi/pycharm_projects/inspecting_twin_models/checkpoints/all_classes/{arch_name}_{perc}_{ur}_class-{c_to_del[0]}_alpha.pt"
@@ -1230,8 +1260,8 @@ def main(args):
 
         ret_acc += best_acc_both[0]
         unl_acc += best_acc_both[1]
-        PATH = f"{run_root}/final.pt"
-        torch.save(model.state_dict(), PATH)
+        PATH = f"{run_root}/best.pt"
+        # torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
         # print(model.weights)
         if not debug:

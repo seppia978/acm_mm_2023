@@ -166,7 +166,8 @@ def main(args):
         'dataset': dataset,
         'logits': logits,
         'clamp': clamp,
-        'flipped': flipped
+        'flipped': flipped,
+        'lora': True,
     }
 
     if logits:
@@ -191,11 +192,13 @@ def main(args):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    
+    # ! check if used
     root = '//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-13-30/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-19-16'
     PATH = f"{root}/final.pt"
+    # run.log({'checkpoint': PATH})
 
     ret_acc, unl_acc = torch.zeros(1), torch.zeros(1)
+    mean_running_val_acc = torch.zeros(1)
 
     if 'cifar10' in dataset.lower():
         c_number = 10
@@ -939,11 +942,36 @@ def main(args):
                     # * computes the final loss
                     # * loss = lambda_0 * loss_ret^2 + lambda_1 * 1 / (loss_unl) + lambda_2 * alpha_norm
 
-                    if hyp['loss_type'] == 'difference':
-                        keep = kept_loss.clone()
-                        unlearn = unlearnt_loss.clone()
-                        loss_cls = hyp['lambda0'] * keep.mean() - hyp['lambda1'] * unlearn.mean()
-                        loss_train = loss_cls.mean()
+                    if 'difference' in hyp['loss_type']:
+                        if 'zero' in hyp['loss_type']:
+                            loss_reg = torch.pow(parameters_distance(
+                                tuple(param.lora_B for param in model.model.modules() \
+                                    if hasattr(param, 'lora_B')),
+                                torch.zeros(len(tuple(param for param in model.model.modules() \
+                                    if hasattr(param, 'lora_B')))),
+                                kind='l2'),
+                                2
+                            )
+
+                            if 'fixed' in hyp['loss_type']:
+                                weights = 1.
+                            elif 'learnable' in hyp['loss_type']:
+                                weights = model.weights
+                            elif 'inv-square' in hyp['loss_type']:
+                                weights = torch.tensor(tuple(
+                                    math.pow(
+                                    len(tuple(model.model.parameters())) - i, 2
+                                    ) for i in range(len(tuple(model.model.parameters())))
+                                ), device=device)
+                                
+                            loss_reg_weighted = (loss_reg * weights).sum()
+                        else:
+                            loss_reg_weighted = loss_reg = kept_loss.mean().clone()
+                            keep = kept_loss.mean()
+
+                        unlearn = unlearnt_loss.mean()
+                        loss_cls = unlearnt_loss.mean().clone()
+                        loss_train = hyp['lambda0'] * loss_reg_weighted - hyp['lambda1'] * loss_cls
                         # loss_train += alpha_norm
                     elif '3way' in hyp['loss_type']:
                         if 'zero' not in hyp['loss_type']:
@@ -1174,14 +1202,17 @@ def main(args):
                             return best_acc_both
                     
                     # * saving intermediate checkpoints
-                    if idx % save_checkpoint_frequency == 0 or best_found:
+                    if best_found:
+                    # if idx % save_checkpoint_frequency == 0 or best_found:
                         #root = '/work/dnai_explainability/unlearning/icml2023'
                         PATH = f"{run_root}/last_intermediate.pt" if not best_found else f"{run_root}/best.pt"
                         # PATH = f"/homes/spoppi/pycharm_projects/inspecting_twin_models/checkpoints/all_classes/{arch_name}_{perc}_{ur}_class-{c_to_del[0]}_alpha.pt"
                         # PATH = f"/homes/spoppi/pycharm_projects/inspecting_twin_models/checkpoints/short/class_100-classes_freeze-30perc_untraining_{hyperparams['model']}.pt"
                         torch.save(model.state_dict(), PATH)
+                        run.log({'checkpoint':PATH})
                         best_found = False
                         print(f'Saved at {PATH}')
+                        
 
         if flipped:
             trainset, valset = val, train,
@@ -1202,14 +1233,16 @@ def main(args):
 
         ret_acc += best_acc_both[0]
         unl_acc += best_acc_both[1]
-        PATH = f"{run_root}/final.pt"
-        torch.save(model.state_dict(), PATH)
+        mean_running_val_acc = 0.5 * ((1 - unl_acc) + ret_acc)
+        PATH = f"{run_root}/best.pt"
+        # torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
         # print(model.weights)
         if not debug:
             wandb.log({
                 "mean_ret_acc": ret_acc/(class_to_delete+1),
-                "mean_unl_acc": unl_acc/(class_to_delete+1)
+                "mean_unl_acc": unl_acc/(class_to_delete+1),
+                "mean_running_val_acc": mean_running_val_acc/(class_to_delete+1),
             })
 
         x=0
