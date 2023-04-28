@@ -148,7 +148,7 @@ def main(args):
         (10000, 1),
     )
 
-    lambda0, lambda1 = lambdas[int(lambda2)]
+    # lambda0, lambda1 = lambdas[int(lambda2)]
     print(lambda0, lambda1)
     # print(f'Unlearning class {c_to_del[0]}...')
 
