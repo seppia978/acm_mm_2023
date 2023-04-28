@@ -13,7 +13,7 @@ from timm.models.vision_transformer import \
 from .non_imagenet_models.vgg_lora import VGG
 from .non_imagenet_models.resnet_lora import ResNet18, ResNet34
 from .non_imagenet_models.vit_lora import ViT
-from .non_imagenet_models.swin import swin_s
+from .non_imagenet_models.swin_lora import swin_s, swin_t
 
 from collections.abc import Iterable
 from typing import Optional, List, Tuple, Union
@@ -588,7 +588,7 @@ class WFTransformer(WFModel):
                     )
                 )
             elif kind==swin_tiny_16224:
-                self.arch = swin_s(
+                self.arch = swin_t(
                     window_size=4,
                     num_classes=classes_number,
                     downscaling_factors=(2,2,2,1)
@@ -662,24 +662,26 @@ class WFTransformer(WFModel):
                     num_classes=classes_number,
                     downscaling_factors=(2,2,2,1)
                 )
-                acab = torch.load(
-                    os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
-                        'swin_s_lr_1e-4_CIFAR20.t7'
+                if baseline_pretrained:
+                    acab = torch.load(
+                        os.path.join(
+                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                            'swin_s_lr_1e-4_CIFAR20.t7'
+                        )
                     )
-                )
             elif kind==swin_tiny_16224:
                 self.arch = swin_s(
                     window_size=4,
                     num_classes=classes_number,
                     downscaling_factors=(2,2,2,1)
                 )
-                acab = torch.load(
-                    os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
-                        'swin_t_lr_1e-4_CIFAR20.t7'
+                if baseline_pretrained:
+                    acab = torch.load(
+                        os.path.join(
+                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                            'swin_t_lr_1e-4_CIFAR20.t7'
+                        )
                     )
-                )
 
             if baseline_pretrained:
                 acab=acab['model']
@@ -760,11 +762,11 @@ class WFTransformer(WFModel):
                 self.arch, m=m, classes_number=classes_number
             )
 
-            if self.pretrained:
-                if self.resume is None:
-                    self.resume = getattr(WFModel_Path(), kind)
-                assert isinstance(self.resume, str), f'Path must be a str. Found {type(self,resume)}'
-                self.arch.load_state_dict(torch.load(self.resume))
+        if self.pretrained:
+            if self.resume is None:
+                self.resume = getattr(WFModel_Path(), kind)
+            assert isinstance(self.resume, str), f'Path must be a str. Found {type(self,resume)}'
+            self.arch.load_state_dict(torch.load(self.resume))
 
         config = timm.data.resolve_data_config({}, model=self.arch)
         self.T = timm.data.transforms_factory.create_transform(**config)

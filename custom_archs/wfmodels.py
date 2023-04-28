@@ -598,9 +598,6 @@ class WFTransformer(WFModel):
                         'swin_t_lr_1e-4_CIFAR10.t7'
                     )
                 )
-            
-            elif kind==deit_small_16224:
-                pass
 
             if baseline_pretrained:
                 acab=acab['model']

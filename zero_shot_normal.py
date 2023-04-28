@@ -150,7 +150,7 @@ def main(args):
         (10, 1000)
     )
 
-    lambda0, lambda1 = lambdas[int(lambda2)]
+    # lambda0, lambda1 = lambdas[int(lambda2)]
     print(lambda0, lambda1)
     # print(f'Unlearning class {c_to_del[0]}...')
 
@@ -247,13 +247,13 @@ def main(args):
 
         if 'vgg16' in arch_name:
             model = wfmodels.WFCNN(
-                kind=wfmodels.vgg16, pretrained=True,
+                kind=wfmodels.vgg16, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFCNN(
-                kind=wfmodels.vgg16, pretrained=True,
+                kind=wfmodels.vgg16, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
@@ -273,13 +273,13 @@ def main(args):
             )
         elif 'resnet18' in arch_name:
             model = wfmodels.WFCNN(
-                kind=wfmodels.resnet18, pretrained=True,
+                kind=wfmodels.resnet18, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFCNN(
-                kind=wfmodels.resnet18, pretrained=True,
+                kind=wfmodels.resnet18, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
@@ -298,14 +298,14 @@ def main(args):
             )
         elif 'vit_small_16224' in arch_name:
             model = wfmodels.WFTransformer(
-                kind=wfmodels.vit_small_16224, pretrained=True,
+                kind=wfmodels.vit_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
 
             general = wfmodels.WFTransformer(
-                kind=wfmodels.vit_small_16224, pretrained=True,
+                kind=wfmodels.vit_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
@@ -313,43 +313,45 @@ def main(args):
             standard = general.arch
         elif 'vit_tiny_16224' in arch_name:
             model = wfmodels.WFTransformer(
-                kind=wfmodels.vit_tiny_16224, pretrained=True,
+                kind=wfmodels.vit_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFTransformer(
-                kind=wfmodels.vit_tiny_16224, pretrained=True,
+                kind=wfmodels.vit_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
             standard = general.arch
         elif 'swin_small_16224' in arch_name:
             model = wfmodels.WFTransformer(
-                kind=wfmodels.swin_small_16224, pretrained=True,
+                kind=wfmodels.swin_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
-
+            model = MyModel(model.arch)
             general = wfmodels.WFTransformer(
-                kind=wfmodels.swin_small_16224, pretrained=True,
+                kind=wfmodels.swin_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
+            standard = general.arch
         elif 'swin_tiny_16224' in arch_name:
             model = wfmodels.WFTransformer(
-                kind=wfmodels.swin_tiny_16224, pretrained=True,
+                kind=wfmodels.swin_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
-
+            model = MyModel(model.arch)
             general = wfmodels.WFTransformer(
-                kind=wfmodels.swin_tiny_16224, pretrained=True,
+                kind=wfmodels.swin_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
+            standard = general.arch
         general.arch.requires_grad_(requires_grad=False)
-        model = model.train()
+        # model = model.train() # Lorenzo
         standard = standard.train()
 
 
