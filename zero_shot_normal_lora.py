@@ -135,11 +135,11 @@ def main(args):
     lora_r = args.lora_r
 
     lambdas = (
-        (10000, 10000),
-        (0.1, 10000),
-        (10, 1000)
-        # (1, 100),
-        # (0.1, 100)
+        # (10000, 10000),
+        # (0.1, 10000),
+        # (10, 1000)
+        (1, 100),
+        (0.1, 100)
     )
 
     lambda0, lambda1 = lambdas[int(lambda2)]
@@ -1007,7 +1007,7 @@ def main(args):
                                     ) for i in range(len(tuple(model.model.parameters())))
                                 ), device=device)
                                 
-                            loss_reg_weighted = (loss_reg * weights).sum()
+                            loss_reg_weighted = (loss_reg * weights).nansum()
                         else:
                             loss_reg_weighted = loss_reg = kept_loss.mean().clone()
                             keep = kept_loss.mean()
@@ -1094,7 +1094,7 @@ def main(args):
                         run.log({'unlearning_loss': loss_cls})
                         # run.log({'train_keep': keep.mean()})
                         run.log({'retaining_loss': loss_reg_weighted})
-                        run.log({'layer_distance_sum': loss_reg.sum()})
+                        run.log({'layer_distance_sum': loss_reg.nansum()})
                         run.log({'unlearning_factor': torch.abs(unlearn.mean())})
                         run.log({'weights_mean': model.weights.abs().mean()})
                         # run.log({'l1c1_alpha_max': tuple(model.get_all_alpha_layers().values())[0].max()})

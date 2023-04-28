@@ -145,12 +145,10 @@ def main(args):
 
     lambdas = (
         #(1, 1), # inserito da Lorenzo
-        (10000, 10000),
-        (0.1, 10000),
-        (10, 1000)
+        (10000, 1),
     )
 
-    # lambda0, lambda1 = lambdas[int(lambda2)]
+    lambda0, lambda1 = lambdas[int(lambda2)]
     print(lambda0, lambda1)
     # print(f'Unlearning class {c_to_del[0]}...')
 
@@ -1023,7 +1021,7 @@ def main(args):
                                     ) for i in range(len(tuple(model.model.parameters())))
                                 ), device=device)
                                 
-                            loss_reg_weighted = (loss_reg * weights).sum()
+                            loss_reg_weighted = (loss_reg * weights).nansum()
                         else:
                             loss_reg_weighted = loss_reg = kept_loss.mean().clone()
                             loss_cls = unlearnt_loss.mean().clone()
@@ -1031,7 +1029,6 @@ def main(args):
                         unlearn = unlearnt_loss.mean()
                         loss_cls = unlearnt_loss.mean().clone()
                         loss_train = hyp['lambda0'] * loss_reg_weighted - hyp['lambda1'] * loss_cls
-
 
                         # loss_train += alpha_norm
                     elif '3way' in hyp['loss_type']:
@@ -1105,7 +1102,7 @@ def main(args):
                         run.log({'unlearning_loss': loss_cls})
                         # run.log({'train_keep': keep.mean()})
                         run.log({'retaining_loss': loss_reg_weighted})
-                        run.log({'layer_distance_sum': loss_reg.sum()})
+                        run.log({'layer_distance_sum': loss_reg.nansum()})
                         run.log({'unlearning_factor': torch.abs(unlearn.mean())})
                         run.log({'weights_mean': model.weights.abs().mean()})
                         # run.log({'l1c1_alpha_max': tuple(model.get_all_alpha_layers().values())[0].max()})
