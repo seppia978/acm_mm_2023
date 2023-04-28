@@ -13,7 +13,7 @@ from timm.models.vision_transformer import \
 from .non_imagenet_models.vgg import VGG
 from .non_imagenet_models.resnet import ResNet18, ResNet34
 from .non_imagenet_models.vit import ViT
-from .non_imagenet_models.swin import swin_s
+from .non_imagenet_models.swin import swin_s, swin_t
 
 from collections.abc import Iterable
 from typing import Optional, List, Tuple, Union
@@ -36,6 +36,7 @@ mnist='mnist'
 vit_small_16224='vit_small_224_16'
 vit_tiny_16224='vit_tiny_224_16'
 swin_small_16224='swin_small_224_16'
+swin_tiny_16224='swin_tiny_16224'
 
 __all__ = {
     'cnn': (
@@ -572,22 +573,35 @@ class WFTransformer(WFModel):
                         'vit_tiny_equivalent_timm-4-ckpt_original_with_augm.t7'
                     )
                 )
-            elif kind==deit_small_16224:
-                pass
+
             elif kind==swin_small_16224:
                 self.arch = swin_s(
                     window_size=4,
-                    channels=3,
                     num_classes=classes_number,
                     downscaling_factors=(2,2,2,1)
                 )
-
                 acab = torch.load(
                     os.path.join(
                         '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
-                        'swin-4-ckpt_original_with_augm.t7' #NOT YET
+                        'swin_s_lr_1e-4_CIFAR10.t7'
                     )
                 )
+            elif kind==swin_tiny_16224:
+                self.arch = swin_t(
+                    window_size=4,
+                    num_classes=classes_number,
+                    downscaling_factors=(2,2,2,1)
+                )
+                acab = torch.load(
+                    os.path.join(
+                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                        'swin_t_lr_1e-4_CIFAR10.t7'
+                    )
+                )
+            
+            elif kind==deit_small_16224:
+                pass
+
             if baseline_pretrained:
                 acab=acab['model']
                 ac=list(map(lambda x: x[7:], acab.keys()))
@@ -641,6 +655,30 @@ class WFTransformer(WFModel):
                             'vit_tiny_lr_1e-4_CIFAR20_dropout_0.1.t7'
                         )
                     )
+            elif kind==swin_small_16224:
+                self.arch = swin_s(
+                    window_size=4,
+                    num_classes=classes_number,
+                    downscaling_factors=(2,2,2,1)
+                )
+                acab = torch.load(
+                    os.path.join(
+                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                        'swin_s_lr_1e-4_CIFAR20.t7'
+                    )
+                )
+            elif kind==swin_tiny_16224:
+                self.arch = swin_s(
+                    window_size=4,
+                    num_classes=classes_number,
+                    downscaling_factors=(2,2,2,1)
+                )
+                acab = torch.load(
+                    os.path.join(
+                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                        'swin_t_lr_1e-4_CIFAR20.t7'
+                    )
+                )
 
             if baseline_pretrained:
                 acab=acab['model']
@@ -721,11 +759,11 @@ class WFTransformer(WFModel):
                 self.arch, m=m, classes_number=classes_number
             )
 
-            if self.pretrained:
-                if self.resume is None:
-                    self.resume = getattr(WFModel_Path(), kind)
-                assert isinstance(self.resume, str), f'Path must be a str. Found {type(self,resume)}'
-                self.arch.load_state_dict(torch.load(self.resume))
+        if self.pretrained:
+            if self.resume is None:
+                self.resume = getattr(WFModel_Path(), kind)
+            assert isinstance(self.resume, str), f'Path must be a str. Found {type(self,resume)}'
+            self.arch.load_state_dict(torch.load(self.resume))
 
         config = timm.data.resolve_data_config({}, model=self.arch)
         self.T = timm.data.transforms_factory.create_transform(**config)

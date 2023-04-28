@@ -142,6 +142,16 @@ def main(args):
     clamp = args.clamp
     flipped = False
 
+
+    lambdas = (
+        #(1, 1), # inserito da Lorenzo
+        (10000, 10000),
+        (0.1, 10000),
+        (10, 1000)
+    )
+
+    lambda0, lambda1 = lambdas[int(lambda2)]
+    print(lambda0, lambda1)
     # print(f'Unlearning class {c_to_del[0]}...')
 
     arch_name = args.nn.lower()
@@ -199,12 +209,8 @@ def main(args):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    
-    root = '//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-13-30/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-19-16'
-    PATH = f"{root}/final.pt"
-    run.log({'checkpoint': PATH})
-
     ret_acc, unl_acc = torch.zeros(1), torch.zeros(1)
+    mean_running_val_acc = torch.zeros(1)
 
     if 'cifar10' in dataset.lower():
         c_number = 10
@@ -215,6 +221,25 @@ def main(args):
         return -1
     
     all_classes = range(c_number)
+
+    try:
+        root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        folder_name = os.path.join(
+            root, wdb_name, datetime.today().strftime("%Y-%m-%d"),
+            f'{lambda0}-{lambda1}'
+        )
+    except:
+        root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        folder_name = f'{arch_name}_{datetime.today().strftime("%Y-%m-%d")}'
+        os.makedirs(os.path.join(root,arch_name))
+        folder_name = os.path.join(
+            root, arch_name, datetime.today().strftime("%Y-%m-%d"),
+            f'{lambda0}-{lambda1}'
+        )
+
+    run_root = os.path.join(root, arch_name, folder_name)
+    if not os.path.isdir(run_root):
+        os.makedirs(run_root)
 
     for class_to_delete in all_classes:
 
@@ -301,13 +326,25 @@ def main(args):
             standard = general.arch
         elif 'swin_small_16224' in arch_name:
             model = wfmodels.WFTransformer(
-                kind=wfmodels.swin_small_16224, pretrained=False,
+                kind=wfmodels.swin_small_16224, pretrained=True,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower()
+                dataset=dataset.lower(), alpha=False
             )
 
             general = wfmodels.WFTransformer(
                 kind=wfmodels.swin_small_16224, pretrained=True,
+                m=hyperparams['alpha_init'], resume=None,
+                dataset=dataset.lower(), alpha=False
+            )
+        elif 'swin_tiny_16224' in arch_name:
+            model = wfmodels.WFTransformer(
+                kind=wfmodels.swin_tiny_16224, pretrained=True,
+                m=hyperparams['alpha_init'], resume=None,
+                dataset=dataset.lower(), alpha=False
+            )
+
+            general = wfmodels.WFTransformer(
+                kind=wfmodels.swin_tiny_16224, pretrained=True,
                 m=hyperparams['alpha_init'], resume=None,
                 dataset=dataset.lower(), alpha=False
             )
@@ -735,22 +772,6 @@ def main(args):
 
         classes_number = len(_val.classes)
 
-        
-        # model.requires_grad_(requires_grad=False)
-        # model = convert_conv2d_to_alpha(model, m=hyperparams['alpha_init'])
-        
-        root='//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/'
-        # root='//mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/'
-
-        if not os.path.isdir(os.path.join(root,wdb_proj)):
-            os.mkdir(os.path.join(root,wdb_proj))
-
-        folder_name = f'{wdb_name}_{datetime.today().strftime("%Y-%m-%d")}'
-        folder_name += f'-{len(os.listdir(os.path.join(root,wdb_proj)))}'
-        run_root = os.path.join(root, wdb_proj, folder_name)
-        if not os.path.isdir(os.path.join(root,wdb_proj,folder_name)):
-            os.mkdir(run_root)
-
         with open(f"{run_root}/config", 'w') as f:
             f.write(str(hyperparams))
         # else:
@@ -780,10 +801,11 @@ def main(args):
             should_stop = False
             patience = hyp['initial_patience']
             best_acc = 0.
-            model.eval()
+            # model.eval()
+            model.train()
 
             save_checkpoint_frequency = 50
-            validation_frequency = int(len(train)/1000) if int(len(train)/1000) > 0 else 10
+            validation_frequency = int(len(train)/100) if int(len(train)/100) > 0 else 10
             # evaluation_frequency = hyp['evaluation_frequency']
             evaluation_frequency = 0 \
                 if hyp['evaluation_frequency'] == 0 \
@@ -830,7 +852,7 @@ def main(args):
 
             # x_cls_del = 0
             # pl = 0
-            for epoch in range(n_epochs):
+            for epoch in range(n_epochs): 
                 if should_stop:
                     break
 
@@ -1112,7 +1134,8 @@ def main(args):
                         print(f'Validation step {idx}')
 
                         # * defining max number of validation images
-                        max_val_size = min(hyp['max_val_size'], len(val[0]))
+                        max_val_unl_size = min(hyp['max_val_size'], len(val[0]))
+                        max_val_keep_size = min(hyp['max_val_size'], len(val[1]))
 
                         # val_loader = DataLoader(
                         #     random_split(val, [max_val_size, len(val)-max_val_size])[0],
@@ -1136,11 +1159,11 @@ def main(args):
 
                         val_c, val_others = val
                         u_val_loader = DataLoader(
-                            random_split(val_c, [max_val_size, len(val_c)-max_val_size])[0],
+                            random_split(val_c, [max_val_unl_size, len(val_c)-max_val_unl_size])[0],
                             batch_size=batch_val, num_workers=4, shuffle=True
                         )
                         k_val_loader = DataLoader(
-                            random_split(val_others, [max_val_size, len(val_others)-max_val_size])[0],
+                            random_split(val_others, [max_val_keep_size, len(val_others)-max_val_keep_size])[0],
                             batch_size=batch_val, num_workers=4, shuffle=True
                         )
 
@@ -1161,10 +1184,9 @@ def main(args):
                                 else:
                                     outs = torch.softmax(model(ims, labels=torch.zeros(1, device='cuda')), -1).cpu()
 
-                                mean_acc_forget += (outs.max(1).indices == labs).sum() / \
-                                                    labs.shape[0]
+                                mean_acc_forget += (outs.max(1).indices == labs).sum()
 
-                            mean_acc_forget /= (ival + 1)
+                            mean_acc_forget /= len(u_val_loader.dataset)
                             ims.cpu()
                             for ival, (ims, labs) in enumerate(k_val_loader):
                                 ims = ims.cuda()
@@ -1177,10 +1199,9 @@ def main(args):
                                 else:
                                     outs = torch.softmax(model(ims), -1).cpu()
 
-                                mean_acc_keep += (outs.max(1).indices == labs).sum() / \
-                                                    labs.shape[0]
+                                mean_acc_keep += (outs.max(1).indices == labs).sum()
 
-                            mean_acc_keep /= (ival + 1)
+                            mean_acc_keep /= len(k_val_loader.dataset)
                             ims.cpu()
                         if not debug:
                             run.log({'acc_on_unlearnt': mean_acc_forget})
@@ -1235,10 +1256,12 @@ def main(args):
                     if best_found:
                     # if idx % save_checkpoint_frequency == 0 or best_found:
                         #root = '/work/dnai_explainability/unlearning/icml2023'
-                        PATH = f"{run_root}/last_intermediate.pt" if not best_found else f"{run_root}/best.pt"
+                        PATH = f"{run_root}/last_intermediate.pt" if not best_found else f"{run_root}/best_CLASS-{class_to_delete}.pt"
                         # PATH = f"/homes/spoppi/pycharm_projects/inspecting_twin_models/checkpoints/all_classes/{arch_name}_{perc}_{ur}_class-{c_to_del[0]}_alpha.pt"
                         # PATH = f"/homes/spoppi/pycharm_projects/inspecting_twin_models/checkpoints/short/class_100-classes_freeze-30perc_untraining_{hyperparams['model']}.pt"
                         torch.save(model.state_dict(), PATH)
+                        if not debug:
+                            run.log({'checkpoint': run_root})
                         best_found = False
                         print(f'Saved at {PATH}')
 
@@ -1260,6 +1283,7 @@ def main(args):
 
         ret_acc += best_acc_both[0]
         unl_acc += best_acc_both[1]
+        mean_running_val_acc = 0.5 * ((1 - unl_acc) + ret_acc)
         PATH = f"{run_root}/best.pt"
         # torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
@@ -1267,7 +1291,8 @@ def main(args):
         if not debug:
             wandb.log({
                 "mean_ret_acc": ret_acc/(class_to_delete+1),
-                "mean_unl_acc": unl_acc/(class_to_delete+1)
+                "mean_unl_acc": unl_acc/(class_to_delete+1),
+                "mean_running_val_acc": mean_running_val_acc/(class_to_delete+1),
             })
 
         x=0

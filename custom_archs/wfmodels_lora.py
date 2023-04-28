@@ -36,6 +36,7 @@ mnist='mnist'
 vit_small_16224='vit_small_224_16'
 vit_tiny_16224='vit_tiny_224_16'
 swin_small_16224='swin_small_224_16'
+swin_tiny_16224='swin_tiny_16224'
 
 __all__ = {
     'cnn': (
@@ -574,22 +575,31 @@ class WFTransformer(WFModel):
                         'vit_tiny_equivalent_timm-4-ckpt_original_with_augm.t7'
                     )
                 )
-            elif kind==deit_small_16224:
-                pass
             elif kind==swin_small_16224:
                 self.arch = swin_s(
                     window_size=4,
-                    channels=3,
                     num_classes=classes_number,
                     downscaling_factors=(2,2,2,1)
                 )
-
                 acab = torch.load(
                     os.path.join(
                         '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
-                        'swin-4-ckpt_original_with_augm.t7' #NOT YET
+                        'swin_s_lr_1e-4_CIFAR10.t7'
                     )
                 )
+            elif kind==swin_tiny_16224:
+                self.arch = swin_s(
+                    window_size=4,
+                    num_classes=classes_number,
+                    downscaling_factors=(2,2,2,1)
+                )
+                acab = torch.load(
+                    os.path.join(
+                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                        'swin_t_lr_1e-4_CIFAR10.t7'
+                    )
+                )
+
             if baseline_pretrained:
                 acab=acab['model']
                 ac=list(map(lambda x: x[7:], acab.keys()))
@@ -645,6 +655,31 @@ class WFTransformer(WFModel):
                             'vit_tiny_lr_1e-4_CIFAR20_dropout_0.1.t7'
                         )
                     )
+
+            elif kind==swin_small_16224:
+                self.arch = swin_s(
+                    window_size=4,
+                    num_classes=classes_number,
+                    downscaling_factors=(2,2,2,1)
+                )
+                acab = torch.load(
+                    os.path.join(
+                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                        'swin_s_lr_1e-4_CIFAR20.t7'
+                    )
+                )
+            elif kind==swin_tiny_16224:
+                self.arch = swin_s(
+                    window_size=4,
+                    num_classes=classes_number,
+                    downscaling_factors=(2,2,2,1)
+                )
+                acab = torch.load(
+                    os.path.join(
+                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                        'swin_t_lr_1e-4_CIFAR20.t7'
+                    )
+                )
 
             if baseline_pretrained:
                 acab=acab['model']
