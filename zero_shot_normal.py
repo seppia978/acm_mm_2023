@@ -805,11 +805,12 @@ def main(args):
             best_acc = 0.
 
             save_checkpoint_frequency = 50
-            validation_frequency = int(len(train)/100) if int(len(train)/100) > 0 else 10
+            validation_frequency = 1 # int(len(train)/100) if int(len(train)/100) > 0 else 10
             # evaluation_frequency = hyp['evaluation_frequency']
-            evaluation_frequency = 0 \
-                if hyp['evaluation_frequency'] == 0 \
-                else int(len(train)/ (hyp['evaluation_frequency'] * hyp['batch_size']))
+            evaluation_frequency = 1 
+            #0 \
+            #    if hyp['evaluation_frequency'] == 0 \
+            #    else int(len(train)/ (hyp['evaluation_frequency'] * hyp['batch_size']))
             if evaluation_frequency:
                 validation_frequency = evaluation_frequency
             elif evaluation_frequency == 0:
