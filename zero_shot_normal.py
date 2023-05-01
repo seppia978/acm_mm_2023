@@ -142,16 +142,6 @@ def main(args):
     clamp = args.clamp
     flipped = False
 
-
-    lambdas = (
-        #(1, 1), # inserito da Lorenzo
-        (10000, 10000),
-        (0.1, 10000),
-        (10, 1000)
-    )
-
-    # lambda0, lambda1 = lambdas[int(lambda2)]
-    print(lambda0, lambda1)
     # print(f'Unlearning class {c_to_del[0]}...')
 
     arch_name = args.nn.lower()

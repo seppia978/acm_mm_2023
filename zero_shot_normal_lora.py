@@ -140,17 +140,6 @@ def main(args):
     flipped = False
     lora_r = args.lora_r
 
-    lambdas = (
-        (10000, 10000),
-        (0.1, 10000),
-        (10, 1000)
-        # (1, 100),
-        # (0.1, 100)
-    )
-
-    lambda0, lambda1 = lambdas[int(lambda2)]
-    print(lambda0, lambda1)
-
     # print(f'Unlearning class {c_to_del[0]}...')
 
     arch_name = args.nn.lower()
