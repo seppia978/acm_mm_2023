@@ -189,7 +189,7 @@ def main(args):
 
     print([(k,v) for k,v in hyperparams.items()])
 
-    wdb_name = f'{wdb_name}_{arch_name}_{perc}_{ur}'
+    wdb_name = f'{wdb_name}_{bs}_{ur}_{lambda0}_{lambda1}'
     if not debug:
         run = wandb.init(
             settings=wandb.Settings(start_method="fork"),
