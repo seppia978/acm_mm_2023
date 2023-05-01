@@ -1281,16 +1281,17 @@ def main(args):
 
         ret_acc += best_acc_both[0]
         unl_acc += best_acc_both[1]
-        mean_running_val_acc = 0.5 * ((1 - unl_acc) + ret_acc)
+        mean_ret_acc = ret_acc/(class_to_delete+1)
+        mean_unl_acc = unl_acc/(class_to_delete+1)
         PATH = f"{run_root}/best.pt"
         # torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
         # print(model.weights)
         if not debug:
             wandb.log({
-                "mean_ret_acc": ret_acc/(class_to_delete+1),
-                "mean_unl_acc": unl_acc/(class_to_delete+1),
-                "mean_running_val_acc": mean_running_val_acc/(class_to_delete+1),
+                "mean_ret_acc": mean_ret_acc,
+                "mean_unl_acc": mean_unl_acc,
+                "mean_running_val_acc": 0.5 * ((1 - mean_unl_acc) + mean_ret_acc),
             })
 
         x=0
