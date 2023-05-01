@@ -46,8 +46,14 @@ from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 # from custom_archs import convert_conv2d_to_alpha, set_label, get_all_alpha_layers, \
 #     get_all_layer_norms, set_alpha_val, clip_alpha_val
 from custom_archs import wfmodels
+import random
 
 # import tqdm
+
+torch.manual_seed(1234)
+np.random.seed(1234)
+random.seed(1234)
+
 
 def random_labels_check(a,b):
     ret = 0.

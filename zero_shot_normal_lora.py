@@ -45,7 +45,12 @@ from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 from custom_archs import wfmodels_lora as wfmodels
 
 import loralib as lora
+import random
 # import tqdm
+
+torch.manual_seed(1234)
+np.random.seed(1234)
+random.seed(1234)
 
 def random_labels_check(a,b):
     ret = 0.
