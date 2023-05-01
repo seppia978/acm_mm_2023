@@ -770,7 +770,8 @@ def main(args):
 
         # optimizer=Adam((x for n,x in model.named_parameters() if 'alpha' in n), lr=hyperparams['ur'])
         # optimizer=SGD((x for n,x in model.named_parameters() if 'alpha' in n), lr=hyperparams['ur'])
-        optimizer=torch.optim.SGD(model.parameters(), lr=hyperparams['ur'])
+        # optimizer=torch.optim.SGD(model.parameters(), lr=hyperparams['ur'])
+        optimizer=torch.optim.Adam(model.parameters(), lr=hyperparams['ur'])
 
 
         print("Untraining...")
