@@ -803,8 +803,6 @@ def main(args):
             should_stop = False
             patience = hyp['initial_patience']
             best_acc = 0.
-            # model.eval()
-            model.train()
 
             save_checkpoint_frequency = 50
             validation_frequency = int(len(train)/100) if int(len(train)/100) > 0 else 10
@@ -882,6 +880,7 @@ def main(args):
                 # loss_ctrain_list, loss_ottrain_list, loss_otval_list, loss_cval_list = [], [], [], []
 
                 for idx, (imgs, labels) in enumerate(train_loader):
+                    model.train()
                     print(f'Untraining: {round((100 * batch_train * idx)/len(train_loader.dataset),2)}%')
 
                     # * setting images and labels to device
@@ -1171,7 +1170,7 @@ def main(args):
                         )
 
                         mean_acc_forget = mean_acc_keep = 0.
-
+                        model.eval()
                         with torch.inference_mode():
                             for ival, (ims, labs) in enumerate(u_val_loader):
                                 ims=ims.cuda()
