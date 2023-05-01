@@ -1012,7 +1012,7 @@ def main(args):
                                     ) for i in range(len(tuple(model.model.parameters())))
                                 ), device=device)
                                 
-                            loss_reg_weighted = (loss_reg * weights).sum()
+                            loss_reg_weighted = (loss_reg * weights).mean()
                         else:
                             loss_reg_weighted = loss_reg = kept_loss.mean().clone()
                             keep = kept_loss.mean()
