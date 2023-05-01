@@ -90,7 +90,9 @@ class WindowAttention(nn.Module):
             self.left_right_mask = nn.Parameter(create_mask(window_size=window_size, displacement=displacement,
                                                             upper_lower=False, left_right=True), requires_grad=False)
 
-        self.to_qkv = lora.MergedLinear(dim, inner_dim * 3, bias = False, r=lora_r, enable_lora=[True, True, True])
+        self.to_q = lora.Linear(dim, inner_dim, bias = False, r=lora_r)
+        self.to_k = lora.Linear(dim, inner_dim, bias = False, r=lora_r)
+        self.to_v = lora.Linear(dim, inner_dim, bias = False, r=lora_r)
         # self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
 
         if self.relative_pos_embedding:
@@ -107,7 +109,13 @@ class WindowAttention(nn.Module):
 
         b, n_h, n_w, _, h = *x.shape, self.heads
 
-        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        # qkv = self.to_qkv(x).chunk(3, dim=-1)
+        q = self.to_q(x)
+        k = self.to_k(x)
+        v = self.to_v(x)
+
+        qkv = (q,k,v)
+
         nw_h = n_h // self.window_size
         nw_w = n_w // self.window_size
 

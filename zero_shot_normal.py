@@ -1023,7 +1023,6 @@ def main(args):
                         loss_cls = unlearnt_loss.mean().clone()
                         loss_train = hyp['lambda0'] * loss_reg_weighted - hyp['lambda1'] * loss_cls
 
-
                         # loss_train += alpha_norm
                     elif '3way' in hyp['loss_type']:
                         if 'zero' not in hyp['loss_type']:
@@ -1097,7 +1096,7 @@ def main(args):
                         run.log({'unlearning_loss': loss_cls})
                         # run.log({'train_keep': keep.mean()})
                         run.log({'retaining_loss': loss_reg_weighted})
-                        run.log({'layer_distance_sum': loss_reg.sum()})
+                        run.log({'layer_distance_sum': loss_reg.nansum()})
                         run.log({'unlearning_factor': torch.abs(unlearn.mean())})
                         run.log({'weights_mean': model.weights.abs().mean()})
                         # run.log({'l1c1_alpha_max': tuple(model.get_all_alpha_layers().values())[0].max()})
