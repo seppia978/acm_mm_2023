@@ -90,12 +90,13 @@ def parameters_distance(model:Union[torch.Tensor, Iterable], other:Union[torch.T
         
         for i, (x,x1) in enumerate(zip(model, other)):
             x, x1 = x.cuda(), x1.cuda()
-            if kind.lower() == 'l2':
+            if kind.lower() == 'l1':
                     ret.append(
-                        (torch.linalg.norm(
-                            torch.pow(x - x1, 2)
-                        ))
-                        .unsqueeze(0)
+                        torch.sum(torch.abs(x - x1)).unsqueeze(0)
+                    )
+            elif kind.lower() == 'l2':
+                    ret.append(
+                        torch.sum((x - x1)**2).unsqueeze(0)
                     )
             elif kind.lower() == 'kl-div':
                     ret.append(
@@ -992,14 +993,13 @@ def main(args):
 
                     if 'difference' in hyp['loss_type']:
                         if 'zero' in hyp['loss_type']:
-                            loss_reg = torch.pow(parameters_distance(
+                            reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+                            loss_reg = parameters_distance(
                                 tuple(param.lora_B for param in model.model.modules() \
                                     if hasattr(param, 'lora_B')),
                                 torch.zeros(len(tuple(param for param in model.model.modules() \
                                     if hasattr(param, 'lora_B')))),
-                                kind='l2'),
-                                2
-                            )
+                                kind=reg_type)
 
                             if 'fixed' in hyp['loss_type']:
                                 weights = 1.
@@ -1034,15 +1034,14 @@ def main(args):
                             loss_reg_weighted = loss_reg
                             loss_train = loss_cls + loss_reg
                         elif 'zero' in hyp['loss_type']:
-                            loss_cls = torch.pow(1. / (unlearn.mean() + 1e-8), 1)
-                            loss_reg = torch.pow(parameters_distance(
+                            loss_cls = 1. / (unlearn.mean() + 1e-8)
+                            reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+                            loss_reg = parameters_distance(
                                 tuple(param.lora_B for param in model.model.modules() \
                                     if hasattr(param, 'lora_B')),
                                 torch.zeros(len(tuple(param for param in model.model.modules() \
                                     if hasattr(param, 'lora_B')))),
-                                kind='l2'),
-                                2
-                            )
+                                kind=reg_type)
 
                             if 'fixed' in hyp['loss_type']:
                                 weights = 1.
