@@ -1091,14 +1091,14 @@ def main(args):
                     #     random_split(train.datasets[0], [10, len(train.datasets[0]) - 10])[0],
                     #     batch_size=batch_val, num_workers=4, shuffle=True
                     # ) # for quick debug only
-                    # retaining_training_test = DataLoader(
-                    #     random_split(train.datasets[1], [len(train.datasets[1]), 0])[0],
-                    #     batch_size=batch_val, num_workers=4, shuffle=True
-                    # )
                     retaining_training_test = DataLoader(
-                        random_split(train.datasets[1], [200, len(train.datasets[1]) - 200])[0],
+                        random_split(train.datasets[1], [len(train.datasets[1]), 0])[0],
                         batch_size=batch_val, num_workers=4, shuffle=True
-                    ) # for quick debug only
+                    )
+                    # retaining_training_test = DataLoader(
+                    #     random_split(train.datasets[1], [200, len(train.datasets[1]) - 200])[0],
+                    #     batch_size=batch_val, num_workers=4, shuffle=True
+                    # ) # for quick debug only
 
                     mean_acc_keep = 0.
                     model.eval()
