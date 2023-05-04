@@ -936,7 +936,7 @@ def main(args):
                                 ) for i in range(len(tuple(model.model.parameters())))
                             ), device=device)
                             
-                        loss_reg_weighted = (loss_reg * weights).mean()
+                        loss_reg_weighted = (loss_reg * weights).max()
                     else:
                         loss_reg_weighted = loss_reg = kept_loss.mean().clone()
                         keep = kept_loss.mean()
@@ -978,7 +978,7 @@ def main(args):
                                 ) for i in range(len(tuple(model.model.parameters())))
                             ), device=device)
                             
-                        loss_reg_weighted = (loss_reg * weights).sum()
+                        loss_reg_weighted = (loss_reg * weights).max()
                         # loss_reg_weighted = loss_reg
                         alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
                         loss_train = hyp['lambda0'] * loss_reg_weighted + hyp['lambda1'] * loss_cls

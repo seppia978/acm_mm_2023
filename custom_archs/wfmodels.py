@@ -621,7 +621,7 @@ class WFTransformer(WFModel):
                     depth = 12,
                     heads = 8,
                     mlp_dim = 384,
-                    dropout = 0.1,
+                    dropout = 0.5,
                     emb_dropout = 0.1
                 )
                 if baseline_pretrained:
@@ -760,7 +760,14 @@ class WFTransformer(WFModel):
             if self.resume is None:
                 self.resume = getattr(WFModel_Path(), kind)
             assert isinstance(self.resume, str), f'Path must be a str. Found {type(self,resume)}'
-            self.arch.load_state_dict(torch.load(self.resume))
+            acab = torch.load(self.resume)
+            ac=list(map(lambda x: x[6:], acab.keys()))
+            ckp = dict()
+            for k1,k2 in zip(acab,ac):
+                            if k2 == k1[6:]:
+                                ckp[k2] = acab[k1]
+            del ckp['s']
+            self.arch.load_state_dict(ckp, strict=False)
 
         config = timm.data.resolve_data_config({}, model=self.arch)
         self.T = timm.data.transforms_factory.create_transform(**config)

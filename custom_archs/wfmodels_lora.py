@@ -766,7 +766,21 @@ class WFTransformer(WFModel):
             if self.resume is None:
                 self.resume = getattr(WFModel_Path(), kind)
             assert isinstance(self.resume, str), f'Path must be a str. Found {type(self,resume)}'
-            self.arch.load_state_dict(torch.load(self.resume))
+            acab = torch.load(self.resume)
+            if 't7' in self.resume:
+                acab=acab['model']
+                k = 7
+            else:
+                k = 6
+            ac=list(map(lambda x: x[k:], acab.keys()))
+            ckp = dict()
+            for k1,k2 in zip(acab,ac):
+                if k2 == k1[k:]:
+                    ckp[k2] = acab[k1]
+            if 's' in ckp.keys():
+                del ckp['s']
+            self.arch.load_state_dict(ckp, strict=False)
+
 
         config = timm.data.resolve_data_config({}, model=self.arch)
         self.T = timm.data.transforms_factory.create_transform(**config)
