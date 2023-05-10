@@ -210,7 +210,10 @@ def main(args):
         print("Dataset not supported")
         return -1
     
-    all_classes = range(c_number)
+    if 'custom' in hyperparams['loss_type']:
+        all_classes = [3]
+    else:
+        all_classes = range(c_number)
 
     try:
         root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
@@ -466,8 +469,23 @@ def main(args):
                 id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
                 train_c = Subset(_train, id_c)
                 train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
-
                 train = train_c
+                if 'sub' in hyperparams['loss_type']:
+                    # import pdb
+                    # pdb.set_trace()
+                    id_sub = torch.randperm(len(id_c))
+                    if 'sub0' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:5])
+                    elif 'sub1' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:50])
+                    elif 'sub2' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:500])
+                    else:
+                        num_imgs = int(hyperparams['loss_type'].split('#')[-2])
+                        train_sub = Subset(train_c, id_sub[:num_imgs])
+                        
+                    train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
+                    train = train_sub
             else:
                 train = _train
             val = (val_c, val_ot)
@@ -758,9 +776,8 @@ def main(args):
             # train.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
             # _train = train
 
-            train, val = _train, _val
+            train= _train
             train.num_classes = 10
-            val.num_classes = 10
 
         classes_number = len(_val.classes)
 

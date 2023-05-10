@@ -443,6 +443,23 @@ def main(args):
                 train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
 
                 train = train_c
+
+                if 'sub' in hyperparams['loss_type']:
+                    # import pdb
+                    # pdb.set_trace()
+                    id_sub = torch.randperm(len(id_c))
+                    if 'sub0' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:5])
+                    elif 'sub1' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:50])
+                    elif 'sub2' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:500])
+                    else:
+                        num_imgs = int(hyperparams['loss_type'].split('[')[-1].split(']')[0])
+                        train_sub = Subset(train_c, id_sub[:num_imgs])
+                    
+                    train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
+                    train = train_sub
             else:
                 train = _train
             val = (val_c, val_ot)
@@ -613,7 +630,8 @@ def main(args):
                 ), c_to_del))[0]
             val_ot = Subset(_val, id_ot)
             val_ot.targets = torch.Tensor(_val.targets).long()[id_ot].tolist()
-            val_ot.targets = map(_cifar100_to_cifar20, val_ot.targets)
+            # breakpoint()
+            val_ot.targets = list(map(_cifar100_to_cifar20, val_ot.targets))
 
             if 'zero' in hyperparams['loss_type']:
 
@@ -622,9 +640,27 @@ def main(args):
                     ), c_to_del))[0]
                 train_c = Subset(_train, id_c)
                 train_c.targets = torch.Tensor(_train.targets).long()[id_c].tolist()
-                train_c.targets = map(_cifar100_to_cifar20, train_c.targets)
+                train_c.targets = list(map(_cifar100_to_cifar20, train_c.targets))
                 
                 train = train_c
+
+                # breakpoint()
+                if 'sub' in hyperparams['loss_type']:
+                    # import pdb
+                    # pdb.set_trace()
+                    id_sub = torch.randperm(len(id_c))
+                    if 'sub0' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:5])
+                    elif 'sub1' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:50])
+                    elif 'sub2' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:500])
+                    else:
+                        num_imgs = int(hyperparams['loss_type'].split('[')[-1].split(']')[0])
+                        train_sub = Subset(train_c, id_sub[:num_imgs])
+                    
+                    train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
+                    train = train_sub
             else:
                 train = _train
             val = (val_c, val_ot)
@@ -1278,6 +1314,7 @@ def main(args):
         # torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
         # print(model.weights)
+
         if not debug:
             wandb.log({
                 "mean_ret_acc": mean_ret_acc,
