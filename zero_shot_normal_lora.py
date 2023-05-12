@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Union
 from collections.abc import Iterable
 import torch
@@ -210,6 +211,7 @@ def main(args):
         return -1
     
     all_classes = range(c_number)
+    unlearning_time = 0
 
     try:
         root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
@@ -799,6 +801,7 @@ def main(args):
         optimizer=torch.optim.Adam(model.parameters(), lr=hyperparams['ur'])
 
 
+
         print("Untraining...")
         #TRAINING LOOP
         def train_loop(
@@ -811,6 +814,10 @@ def main(args):
                 hyp,
                 general=None
         ):
+            start_time = time.time()
+            running_unlearning_time = 0
+            counter_unl_time = 0
+
             should_stop = False
             patience = hyp['initial_patience']
             best_acc = 0.
@@ -891,7 +898,12 @@ def main(args):
 
                 # loss_ctrain_list, loss_ottrain_list, loss_otval_list, loss_cval_list = [], [], [], []
 
+                # breakpoint()
                 for idx, (imgs, labels) in enumerate(train_loader):
+                    curr_unl_time = time.time()
+
+                    run.log({'idx':idx})
+
                     model.train()
                     print(f'Untraining: {round((100 * batch_train * idx)/len(train_loader.dataset),2)}%')
 
@@ -979,7 +991,10 @@ def main(args):
 
                     
                     # * forward step and loss computation for unlearning
+                    
                     unlearnt_score = model(unlearnt_imgs)
+                    
+                    x=0
                     # unlearnt_loss = loss_fn(unlearnt_score, unlearnt_labels)
                     unlearnt_loss = LM.classification_loss_selector(
                         unlearnt_score, unlearnt_imgs, 
@@ -1017,16 +1032,25 @@ def main(args):
 
                     # * computes the final loss
                     # * loss = lambda_0 * loss_ret^2 + lambda_1 * 1 / (loss_unl) + lambda_2 * alpha_norm
-
+                    s = time.time()
                     if 'difference' in hyp['loss_type']:
                         if 'zero' in hyp['loss_type']:
                             reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+
+                            here = time.time() - curr_unl_time
+                            running_unlearning_time += here
+
+
+                            parameters = tuple(param.lora_B for param in model.model.modules()if hasattr(param, 'lora_B'))
+                            zeros = torch.zeros(len(tuple(param for param in model.model.modules() if hasattr(param, 'lora_B'))))
+                            
+                            curr_unl_time = time.time()
+
                             loss_reg = parameters_distance(
-                                tuple(param.lora_B for param in model.model.modules() \
-                                    if hasattr(param, 'lora_B')),
-                                torch.zeros(len(tuple(param for param in model.model.modules() \
-                                    if hasattr(param, 'lora_B')))),
-                                kind=reg_type)
+                                parameters,
+                                zeros,
+                                kind=reg_type
+                            )
 
                             if 'fixed' in hyp['loss_type']:
                                 weights = 1.
@@ -1063,12 +1087,20 @@ def main(args):
                         elif 'zero' in hyp['loss_type']:
                             loss_cls = 1. / (unlearn.mean() + 1e-8)
                             reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+                            
+                            here = time.time() - curr_unl_time
+                            running_unlearning_time += here
+
+                            parameters = tuple(param.lora_B for param in model.model.modules()if hasattr(param, 'lora_B'))
+                            zeros = torch.zeros(len(tuple(param for param in model.model.modules() if hasattr(param, 'lora_B'))))
+                            
+                            curr_unl_time = time.time()
+
                             loss_reg = parameters_distance(
-                                tuple(param.lora_B for param in model.model.modules() \
-                                    if hasattr(param, 'lora_B')),
-                                torch.zeros(len(tuple(param for param in model.model.modules() \
-                                    if hasattr(param, 'lora_B')))),
-                                kind=reg_type)
+                                parameters,
+                                zeros,
+                                kind=reg_type
+                            )
 
                             if 'fixed' in hyp['loss_type']:
                                 weights = 1.
@@ -1091,7 +1123,8 @@ def main(args):
                             # loss_train = loss_cls + alpha_norm
                     else:
                         loss_train = loss_cls.mean()
-
+                    
+                    f = time.time() - s
                     # import pdb; breakpoint()
 
 
@@ -1119,6 +1152,8 @@ def main(args):
                     # model.weights.data = torch.relu(model.weights)
 
                     # * wandb loggings
+                    running_unlearning_time += time.time() - curr_unl_time
+                    counter_unl_time += 1
                     if not debug:
                         # run.log({'alpha_norm': alpha_norm})
                         run.log({'loss': loss_train})
@@ -1271,9 +1306,10 @@ def main(args):
                             run.log({'best_acc_ret': best_acc_both[0]})
                             run.log({'best_acc_unl': best_acc_both[1]})
 
+                        print(f'################ {running_unlearning_time}')
                         if should_stop:
                             print(f'mean_unl: {mean_acc_forget}, current: {currents}, best: {best_acc}, patience: {patience}')
-                            return best_acc_both
+                            return best_acc_both, start_time, running_unlearning_time
                     
                     # * saving intermediate checkpoints
                     if best_found:
@@ -1295,7 +1331,8 @@ def main(args):
             trainset, valset = train, val
 
         lora.mark_only_lora_as_trainable(model) # lora 
-        best_acc_both = train_loop(
+
+        best_acc_both, start_time, running_unlearning_time = train_loop(
             n_epochs = 100_000,
             optimizer = optimizer,
             model = model,
@@ -1306,21 +1343,27 @@ def main(args):
             general=standard
         )
 
+
         ret_acc += best_acc_both[0]
         unl_acc += best_acc_both[1]
         mean_ret_acc = ret_acc/(class_to_delete+1)
         mean_unl_acc = unl_acc/(class_to_delete+1)
         PATH = f"{run_root}/best.pt"
         # torch.save(model.state_dict(), PATH)
-        print(f'Saved at {PATH}')
+        # print(f'Saved at {PATH}')
         # print(model.weights)
+
+        unlearning_time += running_unlearning_time
 
         if not debug:
             wandb.log({
                 "mean_ret_acc": mean_ret_acc,
                 "mean_unl_acc": mean_unl_acc,
                 "mean_running_val_acc": 0.5 * ((1 - mean_unl_acc) + mean_ret_acc),
+                "unlearning_time": unlearning_time / (class_to_delete + 1)
+                # "unlearning_time": untrain_total_time / (class_to_delete + 1)
             })
+
 
         x=0
 
