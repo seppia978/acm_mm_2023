@@ -141,6 +141,7 @@ def main(args):
     logits = args.logits
     clamp = args.clamp
     flipped = False
+    k_web_imgs = args.n_imgs_from_web
 
     # print(f'Unlearning class {c_to_del[0]}...')
 
@@ -210,19 +211,22 @@ def main(args):
         print("Dataset not supported")
         return -1
     
-    if 'custom' in hyperparams['loss_type']:
-        all_classes = [3]
-    else:
-        all_classes = range(c_number)
+    # if 'custom' in hyperparams['loss_type']:
+    #     all_classes = [3]
+    # else:
+    #     all_classes = range(c_number)
+    all_classes = range(c_number)
 
     try:
-        root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        # root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        root='/mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/acm23-gsearch-unlhyp'
         folder_name = os.path.join(
             root, wdb_name, datetime.today().strftime("%Y-%m-%d"),
             f'{lambda0}-{lambda1}'
         )
     except:
-        root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        # root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        root='/mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/acm23-gsearch-unlhyp'
         folder_name = f'{arch_name}_{datetime.today().strftime("%Y-%m-%d")}'
         os.makedirs(os.path.join(root,arch_name))
         folder_name = os.path.join(
@@ -234,6 +238,7 @@ def main(args):
     if not os.path.isdir(run_root):
         os.makedirs(run_root)
 
+    classes_name = ('airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     for class_to_delete in all_classes:
 
         print(f'############################ Class to unlearn: {class_to_delete} ############################')
@@ -469,7 +474,9 @@ def main(args):
                 id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
                 train_c = Subset(_train, id_c)
                 train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
+
                 train = train_c
+
                 if 'sub' in hyperparams['loss_type']:
                     # import pdb
                     # pdb.set_trace()
@@ -481,9 +488,9 @@ def main(args):
                     elif 'sub2' in hyperparams['loss_type']:
                         train_sub = Subset(train_c, id_sub[:500])
                     else:
-                        num_imgs = int(hyperparams['loss_type'].split('#')[-2])
+                        num_imgs = int(hyperparams['loss_type'].split('[')[-1].split(']')[0])
                         train_sub = Subset(train_c, id_sub[:num_imgs])
-                        
+                    
                     train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
                     train = train_sub
             else:
@@ -706,14 +713,14 @@ def main(args):
                 transform=transform_test, download=True, train=False
             )
             train,val=_train,_val
+        
         if 'custom' in dataset.lower():
+           
             root = r'/mnt/beegfs/work/dnai_explainability/unlearning/datasets'
-            dset_folder = 'test0'
-            train_ = 'train'
-            val_ = 'val'
-            cl = 'cat'
-            train_path = os.path.join(root, dset_folder, train_, cl)
-            val_path = os.path.join(root, dset_folder, val_)
+            dset_folder = 'CIFAR10_webimages_500' # cambia e metti quello nuovo
+
+            cl = classes_name[c_to_del[0]] # metti fuori elenco e fai elenco[c_to_del]
+            train_path = os.path.join(root, dset_folder, cl)
 
             class CustomDataset(Dataset):
                 def __init__(self, root, c_to_del, transform=None):
@@ -721,6 +728,7 @@ def main(args):
                     self.transform = transform
                     self.image_paths = os.listdir(root)
                     self.class_label = c_to_del
+                    self.targets = c_to_del * len(self.image_paths)
 
                 def __len__(self):
                     return len(self.image_paths)
@@ -734,50 +742,51 @@ def main(args):
 
                     return image, torch.tensor(self.class_label).squeeze()
 
-            # size = 224
-            # means = [0.485, 0.456, 0.406]
-            # stds = [0.229, 0.224, 0.225]
-            # T = transforms.Compose([
-            #     transforms.Resize(256),
-            #     transforms.CenterCrop(size),
-            #     # transforms.RandomHorizontalFlip(),
-            #     transforms.ToTensor(),
-            #     transforms.Normalize(means, stds),
-            #     # transforms.Lambda(lambda x: x + torch.randn_like(x) * 0.1)
-            # ])
-
-            # _T = transforms.Compose([
-            #     transforms.Resize(256),
-            #     transforms.CenterCrop(size),
-            #     transforms.Normalize(means, stds)
-            # ])
-
-            # DeT = transforms.Compose([
-            #     transforms.Normalize(-1 * torch.Tensor(means) / torch.Tensor(stds), 1.0 / torch.Tensor(stds))
-            # ])
-
             T = model.T if hasattr(model, 'T') and model.T is not None else T
 
+            def convert_to_3d(img):
+                # Assuming img is a tensor of shape [1, 32, 32]
+                # Repeat the image along the channel dimension to create [3, 32, 32]
+                if img.shape[0] == 1:
+                    img = img.repeat(3, 1, 1)
+                elif img.shape[0] > 3:
+                    img = img[:3, :, :]
+                return img
+            
+            T.transforms.insert(-1, transforms.Lambda(convert_to_3d))
             _train = CustomDataset(root=train_path, c_to_del=c_to_del, transform=T)
-            # # _train = ImageFolder(root=train_path, transform=T)
-            # _val = ImageFolder(
-            #     root='/nas/softechict-nas-2/datasets/Imagenet_new/ILSVRC/Data/CLS-LOC/train',
-            #     transform=T
-            # )
-            # _val = ImageFolder(root=val_path, transform=T)
 
-            # _train = ImageFolder(
-            #     root='/nas/softechict-nas-2/datasets/Imagenet_new/ILSVRC/Data/CLS-LOC/val',
-            #     transform=T
-            # )
+            if 'zero' in hyperparams['loss_type']:
 
-            # id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
-            # train = Subset(_train, id_c) 
-            # train.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
-            # _train = train
+                id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
+                train_c = Subset(_train, id_c)
+                train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
 
-            train= _train
+                train = train_c
+
+                if 'sub' in hyperparams['loss_type']:
+                    # import pdb
+                    # pdb.set_trace()
+                    id_sub = torch.randperm(len(id_c))
+                    if 'sub0' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:5])
+                    elif 'sub1' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:50])
+                    elif 'sub2' in hyperparams['loss_type']:
+                        train_sub = Subset(train_c, id_sub[:500])
+                    else:
+                        num_imgs = int(hyperparams['loss_type'].split('[')[-1].split(']')[0])
+                        train_sub = Subset(train_c, id_sub[:num_imgs])
+                    
+                    train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
+                    train = train_sub
+            else:
+                train = _train
+
+            val = (val_c, val_ot)
             train.num_classes = 10
+            train.real_targets = train.targets
+            val[0].num_classes, val[1].num_classes = 10, 10
 
         classes_number = len(_val.classes)
 
@@ -808,6 +817,7 @@ def main(args):
                 hyp,
                 general=None
         ):
+  
             should_stop = False
             patience = hyp['initial_patience']
             best_acc = 0.
@@ -982,7 +992,6 @@ def main(args):
                         unlearnt_score, unlearnt_imgs, 
                         unlearnt_labels, None
                     )
-
                     # * forward steps and loss computations for retaining
                     # * eventually the losses are averaged
                     if not 'zero' in hyp['loss_type']:
@@ -1334,6 +1343,8 @@ if __name__ == '__main__':
     parser.add_argument('-R', "--unlearnt-kept-ratio", type=int, help='Unlearnt-kept ratio', default=5)
     parser.add_argument('-l', "--logits", type=bool, help='Compute loss over logits or labels', default=False)
     parser.add_argument("--clamp", type=float, help='Gradient clamping val', default=-1.0)
+    parser.add_argument("--n_imgs_from_web", type=int, default=5)
+
     args = parser.parse_args()
 
     main(args=args)
