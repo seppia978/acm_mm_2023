@@ -1,1 +1,1 @@
-srun -Q --immediate=10 --partition=dev --gres=gpu:1  --pty bash
+srun -Q --immediate=10 --partition=all_serial --gres=gpu:1  --account=prin_creative --pty bash
