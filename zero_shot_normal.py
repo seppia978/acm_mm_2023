@@ -1,5 +1,6 @@
 import os
 import torch
+import time
 import timm
 from torch.utils.data import Dataset
 import torchvision.datasets
@@ -53,7 +54,6 @@ import random
 torch.manual_seed(1234)
 np.random.seed(1234)
 random.seed(1234)
-
 
 def random_labels_check(a,b):
     ret = 0.
@@ -216,6 +216,9 @@ def main(args):
     # else:
     #     all_classes = range(c_number)
     all_classes = range(c_number)
+
+    untrain_total_time = 0
+    unlearning_time = 0
 
     try:
         # root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
@@ -817,7 +820,12 @@ def main(args):
                 hyp,
                 general=None
         ):
-  
+
+            start_time = time.time()
+            current_time = start_time
+            running_unlearning_time = 0
+            counter_unl_time = 0
+
             should_stop = False
             patience = hyp['initial_patience']
             best_acc = 0.
@@ -899,6 +907,10 @@ def main(args):
                 # loss_ctrain_list, loss_ottrain_list, loss_otval_list, loss_cval_list = [], [], [], []
 
                 for idx, (imgs, labels) in enumerate(train_loader):
+                    curr_unl_time = time.time()
+
+                    run.log({'idx':idx})
+
                     model.train()
                     print(f'Untraining: {round((100 * batch_train * idx)/len(train_loader.dataset),2)}%')
 
@@ -907,50 +919,7 @@ def main(args):
                     labels=labels.to(device)
                     # c_to_del = [torch.unique(labels).squeeze().tolist()]
 
-                    # * reordering images and labels to have [unlearning_images, retaining_images]
-                    # imgsn = []
-                    # labelsn = []
 
-                    # for i in range(imgs.shape[0]):
-                    #     if labels[i] == c_to_del[0]:
-                    #         labelsn.append(labels[i].unsqueeze(0))
-                    #         imgsn.append(imgs[i].unsqueeze(0))
-
-                    # half = len(labelsn)
-                    # for i in range(imgs.shape[0]):
-                    #     if labels[i] != c_to_del[0]:
-                    #         labelsn.append(labels[i].unsqueeze(0))
-                    #         imgsn.append(imgs[i].unsqueeze(0))
-                    
-                    # imgs = torch.cat(imgsn, 0).to(device)
-                    # labels = torch.cat(labelsn, 0).to(device)
-                    # kept_labels = (torch.rand(
-                    #     int(labels.shape[0] / 2), hyp['unlearnt_kept_ratio']
-                    # ) * classes_number).long()
-
-
-                    # * saving unlearning labels and images
-                    # unlearnt_labels = labels[:half]
-                    # unlearnt_imgs = imgs[:half]
-
-                    # * saving retaining images and labels.
-                    # * NB: for the single class case the retaining labels must be
-                    # * the same as unlearning labels! (i.e. corresponging to the class to forget)
-
-                    # kept_portion = unlearnt_labels.clone()
-                    # if not 'zero' in hyp['loss_type']:
-                        # kept_portion = labels.cpu()[:int(labels.cpu().shape[0] / 2)].clone()
-                    # while random_labels_check(kept_labels, kept_portion)[0]:                    
-                    #     for ii in range(kept_labels.shape[1]):
-                    #         idxs = torch.argwhere(kept_labels[:,ii] == kept_portion).flatten()
-                    #         kept_labels[idxs,ii] = (torch.rand(
-                    #             int(idxs.shape[0])
-                    #         ) * classes_number).long()
-                    
-                    # kept_labels = generate_random_idxs(
-                    #     torch.Tensor([c_to_del[0] for _ in labels[half:]]),
-                    #     hyp['unlearnt_kept_ratio'], classes_number
-                    # )
                     if not 'zero' in hyp['loss_type']:
                         # kept_labels = generate_random_idxs(
                         #     kept_portion, hyp['unlearnt_kept_ratio'], classes_number
@@ -963,30 +932,11 @@ def main(args):
                     else:
                         unlearnt_labels = labels
                         unlearnt_imgs = imgs
-
-                    # * NB: for the single class case the retaining labels must be
-                    # * the same as unlearning labels (i.e. corresponging to the class to forget)
-                    # kept_labels = torch.ones_like(kept_labels) * c_to_del[0]
-
-                    # kept_imgs = imgs[half:]
-                    # kept_labels = labels[half:]
-                    # kept_imgs = imgs[:int(labels.shape[0] / 2)]
-
-                    # kept_labels = ((labels[:int(labels.shape[0] / 2)] + 1) % classes_number).view(-1,1)
-
-                    # unlearnt_labels = labels[int(labels.shape[0] / 2):]
-
-                    # set_label(model, unlearnt_labels)
-
-                    # if exists, make a forward step in a normal model
-                    # for debug only
-                    # if general is not None:
-                    #     general..cuda().eval()
-                    #     general_score = general(unlearnt_imgs)
-
                     
                     # * forward step and loss computation for unlearning
                     unlearnt_score = model(unlearnt_imgs)
+
+                    x=0
                     # unlearnt_loss = loss_fn(unlearnt_score, unlearnt_labels)
                     unlearnt_loss = LM.classification_loss_selector(
                         unlearnt_score, unlearnt_imgs, 
@@ -1023,10 +973,11 @@ def main(args):
 
                     # * computes the final loss
                     # * loss = lambda_0 * loss_ret^2 + lambda_1 * 1 / (loss_unl) + lambda_2 * alpha_norm
-
+                    s = time.time()
                     if 'difference' in hyp['loss_type']:
                         if 'zero' in hyp['loss_type']:
                             reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+                            here = time.time() - curr_unl_time
                             loss_reg = parameters_distance(model, standard, kind=reg_type)
 
                             if 'fixed' in hyp['loss_type']:
@@ -1088,7 +1039,7 @@ def main(args):
                             # loss_train = loss_cls + alpha_norm
                     else:
                         loss_train = loss_cls.mean()
-
+                    f = time.time() - s
                     # import pdb; breakpoint()
 
 
@@ -1116,6 +1067,8 @@ def main(args):
                     # model.weights.data = torch.relu(model.weights)
 
                     # * wandb loggings
+                    running_unlearning_time += time.time() - curr_unl_time
+                    counter_unl_time += 1
                     if not debug:
                         # run.log({'alpha_norm': alpha_norm})
                         run.log({'loss': loss_train})
@@ -1267,9 +1220,11 @@ def main(args):
                             run.log({'best_acc_ret': best_acc_both[0]})
                             run.log({'best_acc_unl': best_acc_both[1]})
 
+
+                        print(f'################ {running_unlearning_time}')
                         if should_stop:
                             print(f'mean_unl: {mean_acc_forget}, current: {currents}, best: {best_acc}, patience: {patience}')
-                            return best_acc_both
+                            return best_acc_both, start_time, running_unlearning_time
                     
                     # * saving intermediate checkpoints
                     if best_found:
@@ -1289,7 +1244,7 @@ def main(args):
         else:
             trainset, valset = train, val
 
-        best_acc_both = train_loop(
+        best_acc_both, start_time, running_unlearning_time = train_loop(
             n_epochs = 100_000,
             optimizer = optimizer,
             model = model,
@@ -1306,13 +1261,15 @@ def main(args):
         mean_unl_acc = unl_acc/(class_to_delete+1)
         PATH = f"{run_root}/best.pt"
         # torch.save(model.state_dict(), PATH)
-        print(f'Saved at {PATH}')
+        # print(f'Saved at {PATH}')
+        unlearning_time += running_unlearning_time
         # print(model.weights)
         if not debug:
             wandb.log({
                 "mean_ret_acc": mean_ret_acc,
                 "mean_unl_acc": mean_unl_acc,
                 "mean_running_val_acc": 0.5 * ((1 - mean_unl_acc) + mean_ret_acc),
+                "unlearning_time": unlearning_time / (class_to_delete + 1)
             })
 
         x=0
