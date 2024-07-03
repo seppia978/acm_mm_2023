@@ -59,27 +59,27 @@ def which_baseline(name) -> callable:
 class WFModel_Path:
     
     resnet18_imagenet = os.path.join(
-        '//mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/unl4xai/alpha_resnet18-100-0_resnet18_1.0_100.0_2023-02-07-18',
+        '//work/dnai_explainability/unlearning/icml2023/alpha_matrices/unl4xai/alpha_resnet18-100-0_resnet18_1.0_100.0_2023-02-07-18',
         'last_intermediate.pt'
     )
 
     vgg16_imagenet = os.path.join(
-        '/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-13-30/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-19-16/alpha_matrices/alpha_vgg16-100-0_vgg16_1.0_100.0_2023-01-10-223',
+        '/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-13-30/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-19-16/alpha_matrices/alpha_vgg16-100-0_vgg16_1.0_100.0_2023-01-10-223',
         'last_intermediate.pt'
     )
 
     deit_small_16244_imagenet = os.path.join(
-        '/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-13-30/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-19-16/alpha_matrices/alpha_deit_small_224_16-100-0_deit_small_224_16_1.0_100.0_2023-01-11-236',
+        '/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-13-30/alpha_matrices/alpha_resnet18-100-0_resnet18_1.0_100.0_2022-12-19-16/alpha_matrices/alpha_deit_small_224_16-100-0_deit_small_224_16_1.0_100.0_2023-01-11-236',
         'final.pt'
     )
 
     resnet18_cifar10 = os.path.join(
-        '/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_matrices/test_all_resnet18_1.0_1.0_2023-01-21-0',
+        '/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_matrices/test_all_resnet18_1.0_1.0_2023-01-21-0',
         'final.pt'
     )
 
     resnet18_mnist = os.path.join(
-        '/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_matrices/test_all_resnet18_1.0_1.0_2023-01-21-1',
+        '/work/dnai_explainability/unlearning/icml2023/alpha_matrices/alpha_matrices/test_all_resnet18_1.0_1.0_2023-01-21-1',
         'final.pt'
     )
 
@@ -297,7 +297,7 @@ class WFCNN(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
                             'res18-4-ckpt_original.t7'
                         )
                     )
@@ -306,7 +306,7 @@ class WFCNN(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
                             'res34-4-ckpt_original.t7'
                         )
                     )
@@ -315,7 +315,7 @@ class WFCNN(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
                             'vgg-4-ckpt_original.t7'
                         )
                     )
@@ -329,7 +329,7 @@ class WFCNN(WFModel):
                 self.arch.load_state_dict(ckp, strict=False) # lora
         elif cifar20 in dataset:
             classes_number = 20
-            ckp_root = '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20'
+            ckp_root = '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20'
 
             if kind == resnet18:
                 self.arch = ResNet18(num_classes=20, lora_r=lora_r)
@@ -367,7 +367,7 @@ class WFCNN(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
                             'res18-4-ckpt_original.t7'
                         )
                     )
@@ -376,7 +376,7 @@ class WFCNN(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
                             'res34-4-ckpt_original.t7'
                         )
                     )
@@ -386,7 +386,7 @@ class WFCNN(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
                             'vgg-4-ckpt_original.t7'
                         )
                     )
@@ -517,10 +517,31 @@ class WFTransformer(WFModel):
                 )
             elif kind==vit_small_16224:
                 vittype='vit_small_patch16_224'
-                self.arch = timm.create_model(
-                    vittype,
-                    pretrained=True,
+                # self.arch = timm.create_model(
+                #     vittype,
+                #     pretrained=True,
+                # )
+
+                self.arch = ViT(
+                    image_size = 224,
+                    patch_size = 4,
+                    num_classes = classes_number,
+                    dim = 384,
+                    depth = 12,
+                    heads = 8,
+                    mlp_dim = 384,
+                    dropout = 0.1,
+                    emb_dropout = 0.1,
+                    lora_r = lora_r
                 )
+
+                if baseline_pretrained:
+                    acab = torch.load(
+                        os.path.join(
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                            'vit_small_equivalent_timm-4-ckpt_original_with_augm.t7'
+                        )
+                    )
             elif kind==swin_small_16224:
                 vittype='swin_small_patch4_window7_224'
                 self.arch = timm.create_model(
@@ -529,9 +550,28 @@ class WFTransformer(WFModel):
                 )
             elif kind==vit_tiny_16224:
                 vittype='vit_tiny_patch16_224'
-                self.arch = timm.create_model(
-                    vittype,
-                    pretrained=True,
+                # self.arch = timm.create_model(
+                #     vittype,
+                #     pretrained=True,
+                # )
+                self.arch = ViT(
+                    channels=3,
+                    image_size = 224,
+                    patch_size = 4,
+                    num_classes = classes_number,
+                    dim = 192,
+                    depth = 12,
+                    heads = 8,
+                    mlp_dim = 192,
+                    dropout = 0.1,
+                    emb_dropout = 0.1,
+                    lora_r = lora_r
+                )
+                acab = torch.load(
+                    os.path.join(
+                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                        'vit_tiny_equivalent_timm-4-ckpt_original_with_augm.t7'
+                    )
                 )
                 
         elif cifar10 in dataset:
@@ -551,7 +591,7 @@ class WFTransformer(WFModel):
                 )
                 acab = torch.load(
                     os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
                         'vit_small_equivalent_timm-4-ckpt_original_with_augm.t7'
                     )
                 )
@@ -571,7 +611,7 @@ class WFTransformer(WFModel):
                 )
                 acab = torch.load(
                     os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
                         'vit_tiny_equivalent_timm-4-ckpt_original_with_augm.t7'
                     )
                 )
@@ -583,7 +623,7 @@ class WFTransformer(WFModel):
                 )
                 acab = torch.load(
                     os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
                         'swin_s_lr_1e-4_CIFAR10.t7'
                     )
                 )
@@ -595,7 +635,7 @@ class WFTransformer(WFModel):
                 )
                 acab = torch.load(
                     os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
                         'swin_t_lr_1e-4_CIFAR10.t7'
                     )
                 )
@@ -611,7 +651,7 @@ class WFTransformer(WFModel):
 
         elif cifar20 in dataset:
             classes_number = 20
-            ckp_root = '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20'
+            ckp_root = '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20'
             
             if kind == vit_small_16224:
                 self.arch = ViT(
@@ -665,7 +705,7 @@ class WFTransformer(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
                             'swin_s_lr_1e-4_CIFAR20.t7'
                         )
                     )
@@ -678,7 +718,7 @@ class WFTransformer(WFModel):
                 if baseline_pretrained:
                     acab = torch.load(
                         os.path.join(
-                            '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
+                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar20',
                             'swin_t_lr_1e-4_CIFAR20.t7'
                         )
                     )
@@ -708,7 +748,7 @@ class WFTransformer(WFModel):
                 )
                 acab = torch.load(
                     os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
+                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
                         'vit_small_equivalent_timm-4-ckpt_original_with_augm.t7'
                     )
                 )
@@ -727,7 +767,7 @@ class WFTransformer(WFModel):
                 )
                 acab = torch.load(
                     os.path.join(
-                        '/mnt/beegfs/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
+                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_mnist',
                         'vit_tiny_equivalent_timm-4-ckpt_original_with_augm.t7'
                     )
                 )
