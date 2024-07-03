@@ -278,7 +278,7 @@ def main(args):
                 dataset=dataset.lower(), alpha=False, lora_r=lora_r
             )
             model = MyModel(model.arch)
-            
+
             general = wfmodels.WFTransformer(
                 kind=wfmodels.vit_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
@@ -1046,6 +1046,7 @@ def main(args):
 
                     
                     # * forward step and loss computation for unlearning
+                    torch.cuda.empty_cache()
                     unlearnt_score = model(unlearnt_imgs)
                     # unlearnt_loss = loss_fn(unlearnt_score, unlearnt_labels)
                     unlearnt_loss = LM.classification_loss_selector(

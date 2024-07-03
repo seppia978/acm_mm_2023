@@ -524,11 +524,11 @@ class WFTransformer(WFModel):
 
                 self.arch = ViT(
                     image_size = 224,
-                    patch_size = 4,
+                    patch_size = 16,
                     num_classes = classes_number,
                     dim = 384,
                     depth = 12,
-                    heads = 8,
+                    heads = 4,
                     mlp_dim = 384,
                     dropout = 0.1,
                     emb_dropout = 0.1,
@@ -557,11 +557,11 @@ class WFTransformer(WFModel):
                 self.arch = ViT(
                     channels=3,
                     image_size = 224,
-                    patch_size = 4,
+                    patch_size = 16,
                     num_classes = classes_number,
                     dim = 192,
                     depth = 12,
-                    heads = 8,
+                    heads = 4,
                     mlp_dim = 192,
                     dropout = 0.1,
                     emb_dropout = 0.1,
