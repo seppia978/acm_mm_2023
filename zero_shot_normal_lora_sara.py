@@ -419,8 +419,8 @@ def main(args):
             if 'zero' in hyperparams['loss_type']:
 
                 id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
-                train_c = Subset(_train, id_c)
-                train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
+                train_c = Subset(train, id_c)
+                train_c.targets = torch.Tensor(train.targets).int()[id_c].tolist()
 
                 train = train_c
 
@@ -848,7 +848,7 @@ def main(args):
             val[0].num_classes, val[1].num_classes = 10, 10
 
 
-        classes_number = len(_val.classes)
+        # classes_number = len(_val.classes)
 
         
         # model.requires_grad_(requires_grad=False)
@@ -1267,6 +1267,7 @@ def main(args):
 
                         mean_acc_forget = mean_acc_keep = 0.
                         model.eval()
+                        
                         with torch.inference_mode():
                             for ival, (ims, labs) in enumerate(u_val_loader):
                                 ims=ims.cuda()
