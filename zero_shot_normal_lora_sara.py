@@ -337,6 +337,8 @@ def main(args):
 
         if dataset.lower() == 'imagenet':
 
+            c_to_del = [class_to_delete,]
+
             size = 224
             means = [0.485, 0.456, 0.406]
             stds = [0.229, 0.224, 0.225]
@@ -383,18 +385,24 @@ def main(args):
                 transform=T
             )
             import ast
-            with open('/work/dnai_explainability/id_tot.txt', 'r') as f:
-                idx_train = ast.literal_eval(f.read())
+            # with open('/work/dnai_explainability/id_tot.txt', 'r') as f:
+            #     idx_train = ast.literal_eval(f.read())
             idx_train = list(range(10))
 
-            # idx_val = [x for x in range(50_000) if x not in idx_train]
-            train = Subset(_train, idx_train)
-            train.targets = idx_train #torch.Tensor(_val.targets).int()[idx_train].tolist()
-            train.real_targets = train.targets
-            val = Subset(_val, idx_train)
-            val.targets = idx_train
+            id_train= np.where(np.isin(np.array(
+                _train.targets
+            ), idx_train))[0]
 
-            c_to_del = [class_to_delete,]
+            id_val= np.where(np.isin(np.array(
+                _val.targets
+            ), idx_train))[0]
+            
+            # idx_val = [x for x in range(50_000) if x not in idx_train]
+            train = Subset(_train, id_train)
+            train.targets = torch.Tensor(_val.targets).long()[id_train].tolist() #torch.Tensor(_val.targets).int()[idx_train].tolist()
+            train.real_targets = train.targets
+            val = Subset(_val, id_val)
+            val.targets = torch.Tensor(_val.targets).long()[id_val].tolist()
 
             id_c = np.where(np.isin(np.array(
                 val.targets
@@ -1246,7 +1254,6 @@ def main(args):
 
                         # concat_val = data.ConcatDataset((val_c,val_others))
                         # concat_val.targets = [*val_c.targets, *val_others.targets]
-
 
                         val_c, val_others = val
                         u_val_loader = DataLoader(
