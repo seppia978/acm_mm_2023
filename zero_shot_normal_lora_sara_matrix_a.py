@@ -43,7 +43,7 @@ from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 
 # from custom_archs import wfmodels_lora as wfmodels
 from custom_archs import wfmodels_lora as wfmodels
-from custom_archs.wfmodels_lora import prepare_dataset_model
+from custom_archs import prepare_dataset_model
 
 import loralib as lora
 import random
@@ -1380,6 +1380,10 @@ def main(args):
             trainset, valset = train, val
 
         lora.mark_only_lora_as_trainable(model) # lora 
+
+        for n,x in model.named_parameters():
+            if 'lora_B' in n:
+                x.requires_grad_(False)
         
         best_acc_both = train_loop(
             n_epochs = 100_000,

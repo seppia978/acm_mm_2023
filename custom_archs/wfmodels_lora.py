@@ -495,6 +495,10 @@ Greater than .9 -------------------------------------------------
             '''
         return ret
 
+def prepare_dataset_model(dataset, model):
+    if dataset == 'imagenet':
+        return 'cifar10', None
+
 class WFTransformer(WFModel):
     def __init__(
         self, 
@@ -508,6 +512,8 @@ class WFTransformer(WFModel):
         )
 
         self.layer_type = AWH.WFHead
+        if imagenet in dataset:
+            dataset = cifar10
         if imagenet in dataset:
             if kind==deit_small_16224:
                 vittype='deit_small_patch16_224'
@@ -523,7 +529,7 @@ class WFTransformer(WFModel):
                 # )
 
                 self.arch = ViT(
-                    image_size = 224,
+                    image_size = 32,
                     patch_size = 4,
                     num_classes = classes_number,
                     dim = 384,
@@ -556,7 +562,7 @@ class WFTransformer(WFModel):
                 # )
                 self.arch = ViT(
                     channels=3,
-                    image_size = 224,
+                    image_size = 32,
                     patch_size = 4,
                     num_classes = classes_number,
                     dim = 192,
