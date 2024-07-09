@@ -1415,6 +1415,10 @@ def main(args):
     print(f'ret: {ret_acc/len(tuple(all_classes))}, unl: {unl_acc/len(tuple(all_classes))}')
     print(all_mean_accs)
     print(f'Ret-std: {np.std([x[0] for x in all_mean_accs])}, Unl-std: {np.std([x[1] for x in all_mean_accs])}')
+    wandb.log({
+        'ret-std': np.std([x[0] for x in all_mean_accs]),
+        'unl-std': np.std([x[1] for x in all_mean_accs])
+    })
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
