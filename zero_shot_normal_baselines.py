@@ -1,27 +1,30 @@
 import os
-from typing import Union
-from collections.abc import Iterable
 import torch
-
+import timm
 from torch.utils.data import Dataset
 import torchvision.datasets
 import torchvision.models as models
 import torch.nn.functional as FF
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as F
-
+# from pl_bolts.transforms.dataset_normalizations import cifar10_normalization
 import math
 from datetime import datetime
 import wandb
 from PIL import Image
+# from images_utils import images_utils as IMUT
 import matplotlib.pyplot as plt
+# import ast
+# from torchviz import make_dot
 
 import argparse
 from torch import nn
 import numpy as np
 import loss_manager
 
+# from torchvision.datasets import CIFAR100
 from torch.utils.data import DataLoader, random_split, Subset
+# from sklearn.metrics import accuracy_score
 
 import warnings
 
@@ -40,18 +43,17 @@ from torchvision.datasets import ImageFolder,\
     CIFAR100, \
     MNIST
 from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
-
-# from custom_archs import wfmodels_lora as wfmodels
-from custom_archs import wfmodels_lora as wfmodels
-from custom_archs.wfmodels_lora import prepare_dataset_model
-
-import loralib as lora
+# from custom_archs import convert_conv2d_to_alpha, set_label, get_all_alpha_layers, \
+#     get_all_layer_norms, set_alpha_val, clip_alpha_val
+from custom_archs import wfmodels
 import random
+
 # import tqdm
 
 torch.manual_seed(1234)
 np.random.seed(1234)
 random.seed(1234)
+
 
 def random_labels_check(a,b):
     ret = 0.
@@ -86,20 +88,15 @@ def hook_fn(model, input, output):
     global hooked_tensor
     hooked_tensor = output.data
 
-def parameters_distance(model:Union[torch.Tensor, Iterable], other:Union[torch.Tensor, Iterable], kind:str = 'l2'):
+def parameters_distance(model:nn.Module, other:nn.Module, kind:str = 'l2'):
         ret = []
-        # breakpoint()
-        for i, (x,x1) in enumerate(zip(model, other)):
+        
+        for i, ((n,x),(n1,x1)) in enumerate(zip(model.model.named_parameters(), other.named_parameters())):
             x, x1 = x.cuda(), x1.cuda()
             if kind.lower() == 'l1':
-                    try:
-                        ret.append(
-                            torch.sum(torch.abs(x - x1)).unsqueeze(0)
-                        )
-                    except:
-                        ret.append(
-                            torch.sum(torch.abs(x.default.weight - x1)).unsqueeze(0)
-                        )
+                    ret.append(
+                        torch.sum(torch.abs(x - x1)).unsqueeze(0)
+                    )
             elif kind.lower() == 'l2':
                     ret.append(
                         torch.sum((x - x1)**2).unsqueeze(0)
@@ -110,10 +107,31 @@ def parameters_distance(model:Union[torch.Tensor, Iterable], other:Union[torch.T
                             torch.log(x), x1
                         ).mean().unsqueeze(0)
                     )
-            else:
-                raise ValueError(f'Unknown distance type: {kind}')
 
         return torch.cat(ret, 0)
+
+def split_dataset(train_dataset):
+    
+    #For simplicity we are only using orignal training set and splitting into 4 equal parts
+    #and assign it to Target train/test and Shadow train/test.
+    total_size = len(train_dataset)
+    split1 = total_size // 4
+    split2 = split1*2
+    split3 = split1*3
+    
+    indices = list(range(total_size))
+    
+    np.random.shuffle(indices)
+    
+    #Shadow model train and test set
+    s_train_idx = indices[:split1]
+    s_test_idx = indices[split1:split2]
+
+    #Target model train and test set
+    t_train_idx = indices[split2:split3]
+    t_test_idx = indices[split3:]
+    
+    return s_train_idx, s_test_idx,t_train_idx,t_test_idx
 
 class MyModel(nn.Module):
    def __init__(self, model):
@@ -146,7 +164,8 @@ def main(args):
     logits = args.logits
     clamp = args.clamp
     flipped = False
-    lora_r = args.lora_r
+    baseline = args.baseline
+    mia_training = args.mia_training
     k_web_imgs = args.n_imgs_from_web
 
     # print(f'Unlearning class {c_to_del[0]}...')
@@ -182,7 +201,8 @@ def main(args):
         'logits': logits,
         'clamp': clamp,
         'flipped': flipped,
-        'lora': True,
+        'baseline': baseline,
+        'mia_training': mia_training,
     }
 
     if logits:
@@ -220,80 +240,95 @@ def main(args):
         print("Dataset not supported")
         return -1
     
-    all_classes = list(range(c_number))
-    # find 10 random classes until 1000
-    # all_classes = torch.randperm(1000)[:10].tolist()
-    # if 'imagenet' in dataset.lower():
-    #     all_classes[0] = 281
+    all_classes =  list(range(c_number))
 
     try:
-        # root='/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
-        root='/work/dnai_explainability/ssarto/alpha_matrices/'
-
+        # root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        root='/work/dnai_explainability/ssarto/alpha_matrices/acm23-gsearch-unlhyp'
         folder_name = os.path.join(
-            root, wdb_name, datetime.today().strftime("%Y-%m-%d"),
-            f'{lambda0}-{lambda1}'
+            root, wdb_name, datetime.today().strftime("%Y-%m-%d"), dataset.lower(), f'baseline_{baseline}'
         )
     except:
-        # root='/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
-        root='/work/dnai_explainability/ssarto/alpha_matrices/'
+        # root='/mnt/beegfs/work/dnai_explainability/unlearning/icml2023/alpha_matrices/checkpoints_acm'
+        root='/mnt/beegfs/work/dnai_explainability/ssarto/alpha_matrices/acm23-gsearch-unlhyp'
         folder_name = f'{arch_name}_{datetime.today().strftime("%Y-%m-%d")}'
         os.makedirs(os.path.join(root,arch_name))
         folder_name = os.path.join(
-            root, arch_name, datetime.today().strftime("%Y-%m-%d"),
-            f'{lambda0}-{lambda1}'
+            root, arch_name, datetime.today().strftime("%Y-%m-%d"), dataset.lower(), f'baseline_{baseline}'
         )
-    # dataset, model = prepare_dataset_model(dataset, arch_name)
-    all_mean_accs = []
-    run_root = os.path.join(root, wdb_proj, folder_name)
+
+    run_root = os.path.join(root, arch_name, folder_name)
     if not os.path.isdir(run_root):
         os.makedirs(run_root)
 
-    # classes_name = ('airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-    classes_name = ('kite', 'mud turtle', 'triceratops', 'scorpion', 'peacock', 'goose', 'jellyfish', 'snail', 'flamingo', 'beagle')
+    classes_name = ('airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     for class_to_delete in all_classes:
-        
+
         print(f'############################ Class to unlearn: {class_to_delete} ############################')
-        
+
         if 'vgg16' in arch_name:
             model = wfmodels.WFCNN(
                 kind=wfmodels.vgg16, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFCNN(
                 kind=wfmodels.vgg16, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             standard = general.arch
+        elif "resnet34" in arch_name:
+            # model = models.resnet18(pretrained=True)
+            model = wfmodels.WFCNN(
+                kind=wfmodels.resnet34, pretrained=False,
+                m=hyperparams['alpha_init'], resume=None,
+                dataset=dataset.lower()
+            )
 
+            general = wfmodels.WFCNN(
+                kind=wfmodels.resnet34, pretrained=True,
+                m=hyperparams['alpha_init'], resume=None,
+                dataset=dataset.lower(), alpha=False
+            )
         elif 'resnet18' in arch_name:
             model = wfmodels.WFCNN(
                 kind=wfmodels.resnet18, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFCNN(
                 kind=wfmodels.resnet18, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             standard = general.arch
+        elif 'deit_small_16224' in arch_name:
+            model = wfmodels.WFTransformer(
+                kind=wfmodels.deit_small_16224, pretrained=False,
+                m=hyperparams['alpha_init'], resume=None,
+                dataset=dataset.lower()
+            )
+
+            general = wfmodels.WFTransformer(
+                kind=wfmodels.deit_small_16224, pretrained=True,
+                m=hyperparams['alpha_init'], resume=None,
+                dataset=dataset.lower(), alpha=False
+            )
         elif 'vit_small_16224' in arch_name:
             model = wfmodels.WFTransformer(
                 kind=wfmodels.vit_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
 
             general = wfmodels.WFTransformer(
                 kind=wfmodels.vit_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
 
             standard = general.arch
@@ -301,39 +336,39 @@ def main(args):
             model = wfmodels.WFTransformer(
                 kind=wfmodels.vit_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFTransformer(
                 kind=wfmodels.vit_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             standard = general.arch
         elif 'swin_small_16224' in arch_name:
             model = wfmodels.WFTransformer(
                 kind=wfmodels.swin_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFTransformer(
                 kind=wfmodels.swin_small_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             standard = general.arch
         elif 'swin_tiny_16224' in arch_name:
             model = wfmodels.WFTransformer(
                 kind=wfmodels.swin_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             model = MyModel(model.arch)
             general = wfmodels.WFTransformer(
                 kind=wfmodels.swin_tiny_16224, pretrained=False,
                 m=hyperparams['alpha_init'], resume=None,
-                dataset=dataset.lower(), alpha=False, lora_r=lora_r
+                dataset=dataset.lower(), alpha=False
             )
             standard = general.arch
         general.arch.requires_grad_(requires_grad=False)
@@ -430,32 +465,20 @@ def main(args):
             val_ot = Subset(_val, id_ot)
             val_ot.targets = torch.Tensor(_val.targets).long()[id_ot].tolist()
 
-            if 'zero' in hyperparams['loss_type']:
-
-                id_c = np.where(np.isin(np.array(train.targets), c_to_del))[0]
-                train_c = Subset(train, id_c)
-                train_c.targets = torch.Tensor(train.targets).int()[id_c].tolist()
-
-                train = train_c
-
-                if 'sub' in hyperparams['loss_type']:
-                    # import pdb
-                    # pdb.set_trace()
-                    id_sub = torch.randperm(len(id_c))
-                    if 'sub0' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:5])
-                    elif 'sub1' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:50])
-                    elif 'sub2' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:500])
-                    else:
-                        num_imgs = int(hyperparams['loss_type'].split('[')[-1].split(']')[0])
-                        train_sub = Subset(train_c, id_sub[:num_imgs])
-                    
-                    train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
-                    train = train_sub
-            else:
+            if baseline == 'finetune':
+                train = train_ot
+                # val = _val
+            elif baseline == 'random':
                 train = _train
+                # val = _val
+            else: 
+                train = _train
+
+            # id_ot = np.where(~np.isin(np.array(
+            #     _train.targets
+            #     ), c_to_del))[0]
+            # train_ot = Subset(_train, id_ot)
+            # train_ot.targets = torch.Tensor(_train.targets).long()[id_ot].tolist()
 
             val = (val_c, val_ot)
             
@@ -465,8 +488,8 @@ def main(args):
             train.real_targets = real_targets # sara
             val[0].num_classes, val[1].num_classes = \
                 len(idx_train), len(idx_train)
-            # val[0].num_classes, val[1].num_classes = 1000, 1000
-            # breakpoint()
+
+           
 
 
         elif 'cifar10' in dataset.lower():
@@ -503,7 +526,7 @@ def main(args):
                 root='/work/dnai_explainability/unlearning/datasets/cifar10_classification/val',
                 transform=transform_test, download=True, train=False
             )
-
+            
             c_to_del = [class_to_delete]
 
             id_c = np.where(np.isin(np.array(
@@ -518,32 +541,29 @@ def main(args):
             val_ot = Subset(_val, id_ot)
             val_ot.targets = torch.Tensor(_val.targets).long()[id_ot].tolist()
 
-            if 'zero' in hyperparams['loss_type']:
+            id_ot = np.where(~np.isin(np.array(
+                _train.targets
+                ), c_to_del))[0]
+            train_ot = Subset(_train, id_ot)
+            train_ot.targets = torch.Tensor(_train.targets).long()[id_ot].tolist()
 
-                id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
-                train_c = Subset(_train, id_c)
-                train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
-
-                train = train_c
-
-                if 'sub' in hyperparams['loss_type']:
-                    # import pdb
-                    # pdb.set_trace()
-                    id_sub = torch.randperm(len(id_c))
-                    if 'sub0' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:5])
-                    elif 'sub1' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:50])
-                    elif 'sub2' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:500])
-                    else:
-                        num_imgs = int(hyperparams['loss_type'].split('[')[-1].split(']')[0])
-                        train_sub = Subset(train_c, id_sub[:num_imgs])
-                    
-                    train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
-                    train = train_sub
-            else:
+            if baseline == 'finetune':
+                train = train_ot
+                # val = _val
+            elif baseline == 'random':
                 train = _train
+                # val = _val
+            else: 
+                train = _train
+            # if 'zero' in hyperparams['loss_type']:
+
+            #     id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
+            #     train_c = Subset(_train, id_c)
+            #     train_c.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
+
+            #     train = train_c
+            # else:
+            #     train = _train
             val = (val_c, val_ot)
             train.num_classes = 10
             train.real_targets = train.targets
@@ -700,7 +720,7 @@ def main(args):
                 transform=transform_test, download=True, train=False, c_to_del=c_to_del
             )
 
-            id_c = np.where(np.isin(np.array(
+            '''id_c = np.where(np.isin(np.array(
                 tuple(map(_cifar100_to_cifar20, _val.targets))
                 ), c_to_del))[0]
             val_c = Subset(_val, id_c)
@@ -712,8 +732,7 @@ def main(args):
                 ), c_to_del))[0]
             val_ot = Subset(_val, id_ot)
             val_ot.targets = torch.Tensor(_val.targets).long()[id_ot].tolist()
-            # breakpoint()
-            val_ot.targets = list(map(_cifar100_to_cifar20, val_ot.targets))
+            val_ot.targets = map(_cifar100_to_cifar20, val_ot.targets)
 
             if 'zero' in hyperparams['loss_type']:
 
@@ -722,29 +741,38 @@ def main(args):
                     ), c_to_del))[0]
                 train_c = Subset(_train, id_c)
                 train_c.targets = torch.Tensor(_train.targets).long()[id_c].tolist()
-                train_c.targets = list(map(_cifar100_to_cifar20, train_c.targets))
+                train_c.targets = map(_cifar100_to_cifar20, train_c.targets)
                 
                 train = train_c
-
-                # breakpoint()
-                if 'sub' in hyperparams['loss_type']:
-                    # import pdb
-                    # pdb.set_trace()
-                    id_sub = torch.randperm(len(id_c))
-                    if 'sub0' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:5])
-                    elif 'sub1' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:50])
-                    elif 'sub2' in hyperparams['loss_type']:
-                        train_sub = Subset(train_c, id_sub[:500])
-                    else:
-                        num_imgs = int(hyperparams['loss_type'].split('[')[-1].split(']')[0])
-                        train_sub = Subset(train_c, id_sub[:num_imgs])
-                    
-                    train_sub.targets = torch.Tensor(train_c.targets).int()[id_sub].tolist()
-                    train = train_sub
             else:
                 train = _train
+            '''
+            c_to_del = [class_to_delete]
+
+            id_c = np.where(np.isin(np.array(
+                tuple(map(_cifar100_to_cifar20, _val.targets))
+                ), c_to_del))[0]
+            val_c = Subset(_val, id_c)
+            val_c.targets = torch.Tensor(_val.targets).long()[id_c].tolist()
+
+            id_ot = np.where(~np.isin(np.array(
+                tuple(map(_cifar100_to_cifar20, _val.targets))
+                ), c_to_del))[0]
+            val_ot = Subset(_val, id_ot)
+            val_ot.targets = torch.Tensor(_val.targets).long()[id_ot].tolist()
+
+            id_ot = np.where(~np.isin(np.array(
+                tuple(map(_cifar100_to_cifar20, _train.targets))
+                ), c_to_del))[0]
+            train_ot = Subset(_train, id_ot)
+            train_ot.targets = torch.Tensor(_train.targets).long()[id_ot].tolist()
+
+            if baseline == 'finetune':
+                train = train_ot
+                # val = _val
+            elif baseline == 'random':
+                train = _train
+
             val = (val_c, val_ot)
             train.num_classes = 20
             train.real_targets = list(map(_cifar100_to_cifar20, train.targets))
@@ -783,7 +811,7 @@ def main(args):
             train,val=_train,_val
         
         if 'custom' in dataset.lower():
-            root = r'/work/dnai_explainability/unlearning/datasets'
+            root = r'/mnt/beegfs/work/dnai_explainability/unlearning/datasets'
             dset_folder = 'CIFAR10_webimages_500' # cambia e metti quello nuovo
             # train_ = 'train'
             # val_ = 'val'
@@ -825,11 +853,6 @@ def main(args):
             T.transforms.insert(-1, transforms.Lambda(convert_to_3d))
             _train = CustomDataset(root=train_path, c_to_del=c_to_del, transform=T)
 
-            # fai subset che prende k immagini a seconda di quale esperimento stiamo facendo 
-            # id_c = torch.randperm(len(_train))[:k_web_imgs]
-            # train = Subset(_train, id_c) 
-            # train.targets = torch.Tensor(_train.targets).int()[id_c].tolist()
-
             if 'zero' in hyperparams['loss_type']:
 
                 id_c = np.where(np.isin(np.array(_train.targets), c_to_del))[0]
@@ -862,31 +885,11 @@ def main(args):
             train.real_targets = train.targets
             val[0].num_classes, val[1].num_classes = 10, 10
 
-
-        # classes_number = len(_val.classes)
-
-        
-        # model.requires_grad_(requires_grad=False)
-        # model = convert_conv2d_to_alpha(model, m=hyperparams['alpha_init'])
-        
-        # root='//work/dnai_explainability/ssarto/alpha_matrices/'
-        # breakpoint()
-        print(len(train), len(val[0]), len(val[1]))
-        if not os.path.isdir(os.path.join(root,wdb_proj)):
-            os.mkdir(os.path.join(root,wdb_proj))
+        classes_number = len(_val.classes)
 
         with open(f"{run_root}/config", 'w') as f:
             f.write(str(hyperparams))
-        # else:
-        #     folder_name = root
-        #     run_root = folder_name
-        #     with open(f"{folder_name}/config_2", 'w') as f:
-        #         f.write(str(hyperparams))
 
-
-        # optimizer=Adam((x for n,x in model.named_parameters() if 'alpha' in n), lr=hyperparams['ur'])
-        # optimizer=SGD((x for n,x in model.named_parameters() if 'alpha' in n), lr=hyperparams['ur'])
-        # optimizer=torch.optim.SGD(model.parameters(), lr=hyperparams['ur'])
         optimizer=torch.optim.Adam(model.parameters(), lr=hyperparams['ur'])
 
 
@@ -907,7 +910,7 @@ def main(args):
             best_acc = 0.
 
             save_checkpoint_frequency = 50
-            validation_frequency = 1 # int(len(train)/1000) if int(len(train)/1000) > 0 else 10
+            validation_frequency = 1 # int(len(train)/100) if int(len(train)/100) > 0 else 10
             # evaluation_frequency = hyp['evaluation_frequency']
             evaluation_frequency = 1 
             #0 \
@@ -918,18 +921,7 @@ def main(args):
             elif evaluation_frequency == 0:
                 evaluation_frequency = validation_frequency
             best_found = False
-            # c_to_del = [0]
-            # id_c = np.where(np.isin(np.array(train.targets), c_to_del))[0]
-            # id_others = np.where(~ np.isin(np.array(train.targets), c_to_del))[0]
-
-            # train_c = Subset(train, id_c)
-            # train_others = Subset(train, id_others)
-
-            # train_c.targets = torch.Tensor(train.targets).int()[id_c].tolist()
-            # train_others.targets = torch.Tensor(train.targets).int()[id_others].tolist()
-            
-            # concat_train = data.ConcatDataset((train_c,train_others))
-            # concat_train.targets = [*train_c.targets, *train_others.targets]
+           
 
             with open('class_names/names.txt', 'r') as f:
                 txt = f.read()
@@ -938,24 +930,10 @@ def main(args):
             classes = ast.literal_eval(txt)
 
             batch_train = batch_val = hyp['batch_size']
-            # train_loader = DataLoader(train, batch_size=batch_train, shuffle=True)
-
-            # val_c,val_ot=val
-            # max_val_size=20_000
-            # size_val = min(max_val_size, int(len(val_c)))
-            # size_val = max(max_val_size, int(.1 * len(val_ot)))
-            # otval_loader = DataLoader(random_split(val_ot, [size_val, len(val_ot) - size_val])[0], batch_size=64, shuffle=True)
-
-            # otval_loader.dataset.dataset.names = classes
-            # cval_loader.dataset.dataset.names = classes
-
+         
             model.to(device)
 
-            # confusion_matrix = torch.zeros(1000)
-
-            # x_cls_del = 0
-            # pl = 0
-            for epoch in range(n_epochs):
+            for epoch in range(n_epochs): 
                 if should_stop:
                     break
 
@@ -964,7 +942,7 @@ def main(args):
                     run.log({'epoch': epoch})
 
                 # * balancing the batch with 50% samples from THE class and 50% from the others
-                if 'zero' not in hyp['loss_type']:
+                if baseline == 'random':
                     y_train = train.real_targets  # train.datasets[0].dataset.targets
                     
                     weight = 1. / torch.Tensor([1/train.num_classes for _ in range(train.num_classes)])
@@ -982,296 +960,160 @@ def main(args):
 
                 # loss_ctrain_list, loss_ottrain_list, loss_otval_list, loss_cval_list = [], [], [], []
 
-                test_first_step = False
                 for idx, (imgs, labels) in enumerate(train_loader):
-                    if not test_first_step:
-                        model.train()
-                        print(f'Untraining: {round((100 * batch_train * idx)/len(train_loader.dataset),2)}%')
+                    model.train()
+                    print(f'Untraining: {round((100 * batch_train * idx)/len(train_loader.dataset),2)}%')
 
-                        # * setting images and labels to device
-                        imgs=imgs.to(device)#.requires_grad_(True)
-                        labels=labels.to(device)
-                        # c_to_del = [torch.unique(labels).squeeze().tolist()]
+                    # * setting images and labels to device
+                    imgs=imgs.to(device)#.requires_grad_(True)
+                    labels=labels.to(device)
 
-                        # * reordering images and labels to have [unlearning_images, retaining_images]
-                        # imgsn = []
-                        # labelsn = []
+                    if baseline == 'finetune':
+                        # forward and cross entropy loss
+                        logits = model(imgs)
+                        loss_train = loss_fn(logits, labels)
+                    elif baseline == 'random':
+                        # forward and cross entropy loss with random label exluding the class to unlearn
+                        logits = model(imgs)
+                        # labels = torch.randint(0, train.num_classes, labels.shape).to(device)
+                        label_choice = torch.arange(train.num_classes)
+                        label_choice = label_choice[label_choice != c_to_del[0]]
+                        # index_choice = torch.randperm(len(labels[labels==c_to_del[0]]))
+                        labels[labels==c_to_del[0]] = torch.tensor([random.choice(label_choice) for i in (labels[labels==c_to_del[0]]) ]).to(device)
+  
+                        loss_train = loss_fn(logits, labels)
+                    else:
+                        logits = model(imgs)
+                        loss_train = loss_fn(logits, labels) 
 
-                        # for i in range(imgs.shape[0]):
-                        #     if labels[i] == c_to_del[0]:
-                        #         labelsn.append(labels[i].unsqueeze(0))
-                        #         imgsn.append(imgs[i].unsqueeze(0))
-
-                        # half = len(labelsn)
-                        # for i in range(imgs.shape[0]):
-                        #     if labels[i] != c_to_del[0]:
-                        #         labelsn.append(labels[i].unsqueeze(0))
-                        #         imgsn.append(imgs[i].unsqueeze(0))
-                        
-                        # imgs = torch.cat(imgsn, 0).to(device)
-                        # labels = torch.cat(labelsn, 0).to(device)
-                        # kept_labels = (torch.rand(
-                        #     int(labels.shape[0] / 2), hyp['unlearnt_kept_ratio']
-                        # ) * classes_number).long()
-
-
-                        # * saving unlearning labels and images
-                        # unlearnt_labels = labels[:half]
-                        # unlearnt_imgs = imgs[:half]
-
-                        # * saving retaining images and labels.
-                        # * NB: for the single class case the retaining labels must be
-                        # * the same as unlearning labels! (i.e. corresponging to the class to forget)
-
-                        # kept_portion = unlearnt_labels.clone()
-                        # if not 'zero' in hyp['loss_type']:
-                            # kept_portion = labels.cpu()[:int(labels.cpu().shape[0] / 2)].clone()
-                        # while random_labels_check(kept_labels, kept_portion)[0]:                    
-                        #     for ii in range(kept_labels.shape[1]):
-                        #         idxs = torch.argwhere(kept_labels[:,ii] == kept_portion).flatten()
-                        #         kept_labels[idxs,ii] = (torch.rand(
-                        #             int(idxs.shape[0])
-                        #         ) * classes_number).long()
-                        
+            
+                    '''
+                    if not 'zero' in hyp['loss_type']:
                         # kept_labels = generate_random_idxs(
-                        #     torch.Tensor([c_to_del[0] for _ in labels[half:]]),
-                        #     hyp['unlearnt_kept_ratio'], classes_number
+                        #     kept_portion, hyp['unlearnt_kept_ratio'], classes_number
                         # )
-                        if not 'zero' in hyp['loss_type']:
-                            # kept_labels = generate_random_idxs(
-                            #     kept_portion, hyp['unlearnt_kept_ratio'], classes_number
-                            # )
-                            kept_labels = labels[labels!=c_to_del[0]]
-                            kept_imgs = imgs[labels!=c_to_del[0]]
+                        kept_labels = labels[labels!=c_to_del[0]]
+                        kept_imgs = imgs[labels!=c_to_del[0]]
 
-                            unlearnt_labels = labels[labels==c_to_del[0]]
-                            unlearnt_imgs = imgs[labels==c_to_del[0]]
-                        else:
-                            unlearnt_labels = labels
-                            unlearnt_imgs = imgs
+                        unlearnt_labels = labels[labels==c_to_del[0]]
+                        unlearnt_imgs = imgs[labels==c_to_del[0]]
+                    else:
+                        unlearnt_labels = labels
+                        unlearnt_imgs = imgs
 
-                        # * NB: for the single class case the retaining labels must be
-                        # * the same as unlearning labels (i.e. corresponging to the class to forget)
-                        # kept_labels = torch.ones_like(kept_labels) * c_to_del[0]
+                    
+                    # * forward step and loss computation for unlearning
+                    unlearnt_score = model(unlearnt_imgs)
+                    unlearnt_loss = LM.classification_loss_selector(
+                        unlearnt_score, unlearnt_imgs, 
+                        unlearnt_labels, None
+                    )
 
-                        # kept_imgs = imgs[half:]
-                        # kept_labels = labels[half:]
-                        # kept_imgs = imgs[:int(labels.shape[0] / 2)]
+                    # * forward steps and loss computations for retaining
+                    # * eventually the losses are averaged
+                    if not 'zero' in hyp['loss_type']:
+                        kept_score = model(kept_imgs)
 
-                        # kept_labels = ((labels[:int(labels.shape[0] / 2)] + 1) % classes_number).view(-1,1)
-
-                        # unlearnt_labels = labels[int(labels.shape[0] / 2):]
-
-                        # set_label(model, unlearnt_labels)
-
-                        # if exists, make a forward step in a normal model
-                        # for debug only
-                        # if general is not None:
-                        #     general..cuda().eval()
-                        #     general_score = general(unlearnt_imgs)
-
-                        
-                        # * forward step and loss computation for unlearning
-                        torch.cuda.empty_cache()
-                        unlearnt_score = model(unlearnt_imgs)
-                        # unlearnt_loss = loss_fn(unlearnt_score, unlearnt_labels)
-                        unlearnt_loss = LM.classification_loss_selector(
-                            unlearnt_score, unlearnt_imgs, 
-                            unlearnt_labels, None
+                        kept_loss = LM.classification_loss_selector(
+                            kept_score, kept_imgs,
+                            kept_labels, general
                         )
 
-                        # * forward steps and loss computations for retaining
-                        # * eventually the losses are averaged
-                        if not 'zero' in hyp['loss_type']:
-                            # kept_loss_list=[]
 
-                            # if general is not None:
-                            #         general.cuda().eval()
-                            #         general_score = general(kept_imgs)
+                    if 'difference' in hyp['loss_type']:
+                        if 'zero' in hyp['loss_type']:
+                            reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+                            loss_reg = parameters_distance(model, standard, kind=reg_type)
 
-                            # for k in range(hyp['unlearnt_kept_ratio']):
-                                # set_label(model, kept_labels[:,k].squeeze())
-                            kept_score = model(kept_imgs)
-                                # kept_loss_list.append(
-                                #     loss_fn(
-                                #         kept_score,
-                                #         labels[:int(labels.shape[0] / 2)
-                                #         ].squeeze()
-                                #     ).unsqueeze(0)
-                                # )
-                            # kept_loss_list.append(
-                            kept_loss = LM.classification_loss_selector(
-                                kept_score, kept_imgs,
-                                kept_labels, general
-                            )
-                            # )
-
-                            # kept_loss = torch.cat(kept_loss_list).mean(dim=0)
-                            # kept_loss = torch.cat(kept_loss_list).mean(dim=0)
-
-                        # * computes the final loss
-                        # * loss = lambda_0 * loss_ret^2 + lambda_1 * 1 / (loss_unl) + lambda_2 * alpha_norm
-
-                        if 'difference' in hyp['loss_type']:
-                            if 'zero' in hyp['loss_type']:
-                                reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
-                                loss_reg = parameters_distance(
-                                    tuple(param.lora_B for param in model.model.modules() \
-                                        if hasattr(param, 'lora_B')),
-                                    torch.zeros(len(tuple(param for param in model.model.modules() \
-                                        if hasattr(param, 'lora_B')))),
-                                    kind=reg_type)
-
-                                if 'fixed' in hyp['loss_type']:
-                                    weights = 1.
-                                elif 'learnable' in hyp['loss_type']:
-                                    weights = model.weights
-                                elif 'inv-square' in hyp['loss_type']:
-                                    weights = torch.tensor(tuple(
-                                        math.pow(
-                                        len(tuple(model.model.parameters())) - i, 2
-                                        ) for i in range(len(tuple(model.model.parameters())))
-                                    ), device=device)
-                                    
-                                loss_reg_weighted = (loss_reg * weights).mean()
-                            else:
-                                loss_reg_weighted = loss_reg = kept_loss.mean().clone()
-                                keep = kept_loss.mean()
-
-                            unlearn = unlearnt_loss.mean()
-                            loss_cls = unlearnt_loss.mean().clone()
-                            loss_train = hyp['lambda0'] * loss_reg_weighted - hyp['lambda1'] * loss_cls
-                            # loss_train += alpha_norm
-                        elif '3way' in hyp['loss_type']:
-                            if 'zero' not in hyp['loss_type']:
-                                keep = kept_loss.clone()
-                            unlearn = unlearnt_loss.clone()
-                            if 'multiplication' in hyp['loss_type']:
-                                loss_cls = (hyp['lambda0'] * keep.mean() / (hyp['lambda1'] * torch.abs(unlearn.mean())))
-                                # loss_train = loss_cls + alpha_norm
-                            elif 'sum' in hyp['loss_type']:
-                                loss_cls = torch.pow(hyp['lambda1']/(unlearn.mean()+1e-8),1)
-                                loss_reg = torch.pow(hyp['lambda0'] * keep.mean(),2)
-                                loss_reg_weighted = loss_reg
-                                loss_train = loss_cls + loss_reg
-                            elif 'zero' in hyp['loss_type']:
-                                loss_cls = 1. / (unlearn.mean() + 1e-8)
-                                reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
-                                loss_reg = parameters_distance(
-                                    tuple(param.lora_B for param in model.model.modules() \
-                                        if hasattr(param, 'lora_B')),
-                                    torch.zeros(len(tuple(param for param in model.model.modules() \
-                                        if hasattr(param, 'lora_B')))),
-                                    kind=reg_type)
-
-                                if 'fixed' in hyp['loss_type']:
-                                    weights = 1.
-                                elif 'learnable' in hyp['loss_type']:
-                                    weights = model.weights
-                                elif 'inv-square' in hyp['loss_type']:
-                                    weights = torch.tensor(tuple(
-                                        math.pow(
-                                        len(tuple(model.model.parameters())) - i, 2
-                                        ) for i in range(len(tuple(model.model.parameters())))
-                                    ), device=device)
-                                    
-                                loss_reg_weighted = (loss_reg * weights).sum()
-                                # loss_reg_weighted = loss_reg
-                                alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
-                                loss_train = hyp['lambda0'] * loss_reg_weighted + hyp['lambda1'] * loss_cls
-
-                            elif 'third' in hyp['loss_type']:
-                                loss_cls = hyp['lambda0'] * keep.mean() * (1 - hyp['lambda1'] / torch.abs(unlearn.mean())) # l+ * (1 - lambda1/l-)
-                                # loss_train = loss_cls + alpha_norm
+                            if 'fixed' in hyp['loss_type']:
+                                weights = 1.
+                            elif 'learnable' in hyp['loss_type']:
+                                weights = model.weights
+                            elif 'inv-square' in hyp['loss_type']:
+                                weights = torch.tensor(tuple(
+                                    math.pow(
+                                    len(tuple(model.model.parameters())) - i, 2
+                                    ) for i in range(len(tuple(model.model.parameters())))
+                                ), device=device)
+                                
+                            loss_reg_weighted = (loss_reg * weights).mean()
                         else:
-                            loss_train = loss_cls.mean()
+                            loss_reg_weighted = loss_reg = kept_loss.mean().clone()
+                            loss_cls = unlearnt_loss.mean().clone()
 
-                        # import pdb; breakpoint()
+                        unlearn = unlearnt_loss.mean()
+                        loss_cls = unlearnt_loss.mean().clone()
+                        loss_train = hyp['lambda0'] * loss_reg_weighted - hyp['lambda1'] * loss_cls
 
+                        # loss_train += alpha_norm
+                    elif '3way' in hyp['loss_type']:
+                        if 'zero' not in hyp['loss_type']:
+                            keep = kept_loss.clone()
+                        unlearn = unlearnt_loss.clone()
+                        if 'multiplication' in hyp['loss_type']:
+                            loss_cls = (hyp['lambda0'] * keep.mean() / (hyp['lambda1'] * torch.abs(unlearn.mean())))
+                            # loss_train = loss_cls + alpha_norm
+                        elif 'sum' in hyp['loss_type']:
+                            loss_cls = torch.pow(hyp['lambda1']/(unlearn.mean()+1e-8),1)
+                            loss_reg = torch.pow(hyp['lambda0'] * keep.mean(),2)
+                            loss_reg_weighted = loss_reg
+                            loss_train = loss_cls + loss_reg
+                        elif 'zero' in hyp['loss_type']:
+                            loss_cls = 1. / (unlearn.mean() + 1e-8)
+                            reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
+                            loss_reg = parameters_distance(model, standard, kind=reg_type)
 
-                        # loss_ctrain_list.append(mean_loss_ctrain.cpu().item())
-                        # loss_ottrain_list.append(mean_loss_ottrain.cpu().item())
+                            if 'fixed' in hyp['loss_type']:
+                                weights = 1.
+                            elif 'learnable' in hyp['loss_type']:
+                                weights = model.weights
+                            elif 'inv-square' in hyp['loss_type']:
+                                weights = torch.tensor(tuple(
+                                    math.pow(
+                                    len(tuple(model.model.parameters())) - i, 2
+                                    ) for i in range(len(tuple(model.model.parameters())))
+                                ), device=device)
+                                
+                            loss_reg_weighted = (loss_reg * weights).sum()
+                            # loss_reg_weighted = loss_reg
+                            alpha_norm = 0 # hyp['lambda2'] * (model.get_all_layer_norms(m=1.)).mean().to('cuda')
+                            loss_train = hyp['lambda0'] * loss_reg_weighted + hyp['lambda1'] * loss_cls
 
-                        # * zeroing and backwarding the grads, followed by an optimizer step
-                        # * NB: zeroing and stepping frequencies are handled by
-                        # * the zero_grad_frequency hyperparameter
-                        # if (idx + 1)  % hyp['zero_grad_frequency'] == 0:
-                        #     optimizer.zero_grad()
+                        elif 'third' in hyp['loss_type']:
+                            loss_cls = hyp['lambda0'] * keep.mean() * (1 - hyp['lambda1'] / torch.abs(unlearn.mean())) # l+ * (1 - lambda1/l-)
+                            # loss_train = loss_cls + alpha_norm
+                    else:
+                        loss_train = loss_cls.mean()'''
 
-                        loss_train.backward()
-                        # print(model.features[0].alpha.grad.mean())
+                    loss_train.backward()
+                    # print(model.features[0].alpha.grad.mean())
 
-                        if (idx + 1) % hyp['zero_grad_frequency'] == 0 or (idx + 1) * hyp['batch_size'] > len(train):
+                    
+                    optimizer.step()
+                    optimizer.zero_grad()
 
-                            if hyp['clamp'] > 0:
-                                nn.utils.clip_grad_norm_(model.parameters(), hyp['clamp'])
-                            optimizer.step()
-                            optimizer.zero_grad()
-
-                        # * clipping alpha values between max and min
-                        # model.clip_alphas() # clip alpha vals
-                        # model.weights.data = torch.relu(model.weights)
-
-                        # * wandb loggings
-                        if not debug:
-                            # run.log({'alpha_norm': alpha_norm})
-                            run.log({'loss': loss_train})
-                            run.log({'unlearning_loss': loss_cls})
-                            # run.log({'train_keep': keep.mean()})
-                            run.log({'retaining_loss': loss_reg_weighted})
-                            run.log({'layer_distance_sum': loss_reg.nansum()})
-                            run.log({'unlearning_factor': torch.abs(unlearn.mean())})
-                            run.log({'weights_mean': model.weights.abs().mean()})
-                            # run.log({'l1c1_alpha_max': tuple(model.get_all_alpha_layers().values())[0].max()})
-                            # run.log({'l1c1_alpha_min': tuple(model.get_all_alpha_layers().values())[0].min()})
-
+                    # * wandb loggings
+                    if not debug:
+                        # run.log({'alpha_norm': alpha_norm})
+                        run.log({'loss': loss_train})
+                        run.log({'weights_mean': model.weights.abs().mean()})
+                      
                     # * validation steps:
                     # * firstly the unlearning validation step
                     # * secondly the retaining validation step
                     if idx % validation_frequency == 0 and validation:
                         
-                        # * saving CUDA memory
-                        # unlearnt_loss.cpu()
-                        # loss_reg.cpu()
-                        # loss_train.cpu()
+                        loss_train.cpu()
 
-                        # unlearnt_score.cpu()
-                        # # kept_score.cpu()
-
-                        # unlearnt_labels.cpu()
-                        # # kept_labels.cpu()
-
-                        # loss_cls.cpu()
-                        # # alpha_norm.cpu()
-
-                        # imgs.cpu()
-                        # labels.cpu()
+                        imgs.cpu()
+                        labels.cpu()
 
                         print(f'Validation step {idx}')
 
                         # * defining max number of validation images
-                        # * defining max number of validation images
                         max_val_unl_size = min(hyp['max_val_size'], len(val[0]))
                         max_val_keep_size = min(hyp['max_val_size'], len(val[1]))
 
-                        # val_loader = DataLoader(
-                        #     random_split(val, [max_val_size, len(val)-max_val_size])[0],
-                        #     batch_size=batch_val, num_workers=1, shuffle=True
-                        # )
-
-                        # * selecting the unlearning and the retaining validation sets
-                        # * useless in the multiclass case
-                        # id_c = np.where(np.isin(np.array(val.targets), c_to_del))[0]
-                        # id_others = np.where(~ np.isin(np.array(val.targets), c_to_del))[0]
-
-                        # val_c = Subset(val, id_c)
-                        # val_others = Subset(val, id_others)
-
-                        # val_c.targets = torch.Tensor(val.targets).int()[id_c].tolist()
-                        # val_others.targets = torch.Tensor(val.targets).int()[id_others].tolist()
-
-                        # concat_val = data.ConcatDataset((val_c,val_others))
-                        # concat_val.targets = [*val_c.targets, *val_others.targets]
 
                         val_c, val_others = val
                         u_val_loader = DataLoader(
@@ -1285,7 +1127,6 @@ def main(args):
 
                         mean_acc_forget = mean_acc_keep = 0.
                         model.eval()
-                        
                         with torch.inference_mode():
                             for ival, (ims, labs) in enumerate(u_val_loader):
                                 ims=ims.cuda()
@@ -1323,29 +1164,7 @@ def main(args):
                         if not debug:
                             run.log({'acc_on_unlearnt': mean_acc_forget})
                             run.log({'acc_of_kept': mean_acc_keep})
-                        # if general is not None and False:
-                        #     mean_acc_gen=0.
-                        #     general.cuda()
-                        #     general.eval()
-                        #     for ival, (ims, labs) in enumerate(val_loader):
-                        #             ims = ims.cuda()
-                        #             # labs = labs.cuda()
-
-                        #             labs_portion = labs.clone()
-
-                        #             CLASS = generate_random_idxs(
-                        #                 labs_portion, 1, classes_number
-                        #             ).squeeze()
-                        #             # set_label(model, CLASS.cuda())
-
-                        #             outs = torch.softmax(general(ims,labels=labs.cuda()), -1).cpu()
-
-                        #             mean_acc_gen += (outs.max(1).indices == labs).sum() / \
-                        #                                 labs.shape[0]
-
-                        #     mean_acc_gen /= (ival + 1)
-
-                        # current_acc = 0.5 * (1-mean_acc_forget)
+                 
                         current_acc = 0.5 * ((1-mean_acc_forget) + mean_acc_keep)
                         if evaluation_frequency and idx % evaluation_frequency == 0:
                             if current_acc < best_acc:
@@ -1381,17 +1200,14 @@ def main(args):
                             run.log({'checkpoint': run_root})
                         best_found = False
                         print(f'Saved at {PATH}')
-                        
 
         if flipped:
             trainset, valset = val, train,
         else:
             trainset, valset = train, val
 
-        if dataset != 'imagenet':
-            lora.mark_only_lora_as_trainable(model) # lora 
-        
-        # breakpoint()
+        if baseline == 'finetune' or baseline == 'random':
+            cls_loss = torch.nn.CrossEntropyLoss()
         
         best_acc_both = train_loop(
             n_epochs = 100_000,
@@ -1404,8 +1220,6 @@ def main(args):
             general=standard
         )
 
-        all_mean_accs.append(best_acc_both)
-
         ret_acc += best_acc_both[0]
         unl_acc += best_acc_both[1]
         mean_ret_acc = ret_acc/(class_to_delete+1)
@@ -1414,7 +1228,6 @@ def main(args):
         # torch.save(model.state_dict(), PATH)
         print(f'Saved at {PATH}')
         # print(model.weights)
-
         if not debug:
             wandb.log({
                 "mean_ret_acc": mean_ret_acc,
@@ -1425,12 +1238,6 @@ def main(args):
         x=0
 
     print(f'ret: {ret_acc/len(tuple(all_classes))}, unl: {unl_acc/len(tuple(all_classes))}')
-    print(all_mean_accs)
-    print(f'Ret-std: {np.std([x[0] for x in all_mean_accs])}, Unl-std: {np.std([x[1] for x in all_mean_accs])}')
-    wandb.log({
-        'ret-std': np.std([x[0] for x in all_mean_accs]),
-        'unl-std': np.std([x[1] for x in all_mean_accs])
-    })
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -1456,9 +1263,9 @@ if __name__ == '__main__':
     parser.add_argument('-R', "--unlearnt-kept-ratio", type=int, help='Unlearnt-kept ratio', default=5)
     parser.add_argument('-l', "--logits", type=bool, help='Compute loss over logits or labels', default=False)
     parser.add_argument("--clamp", type=float, help='Gradient clamping val', default=-1.0)
-    parser.add_argument("--lora_r", type=int, help='Lora r', default=4)
+    parser.add_argument("--baseline", type=str, choices=['finetune', 'random'], help='Baseline to use', default=None)
+    parser.add_argument("--mia_training", type=str, choices=['shadow', 'target'], help='MIA training', default=None)
     parser.add_argument("--n_imgs_from_web", type=int, default=5)
-
     args = parser.parse_args()
 
     main(args=args)
