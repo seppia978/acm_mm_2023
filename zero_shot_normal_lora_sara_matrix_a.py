@@ -878,7 +878,7 @@ def main(args):
         # optimizer=Adam((x for n,x in model.named_parameters() if 'alpha' in n), lr=hyperparams['ur'])
         # optimizer=SGD((x for n,x in model.named_parameters() if 'alpha' in n), lr=hyperparams['ur'])
         # optimizer=torch.optim.SGD(model.parameters(), lr=hyperparams['ur'])
-        optimizer=torch.optim.Adam(model.parameters(), lr=hyperparams['ur'])
+        optimizer=torch.optim.Adam((x for n,x in model.named_parameters()), lr=hyperparams['ur'])
 
 
         print("Untraining...")
@@ -1107,10 +1107,10 @@ def main(args):
                             if 'zero' in hyp['loss_type']:
                                 reg_type = 'l1' if 'l1' in hyp['loss_type'] else 'l2'
                                 loss_reg = parameters_distance(
-                                    tuple(param.lora_B for param in model.model.modules() \
-                                        if hasattr(param, 'lora_B')),
+                                    tuple(param.lora_A for param in model.model.modules() \
+                                        if hasattr(param, 'lora_A')),
                                     torch.zeros(len(tuple(param for param in model.model.modules() \
-                                        if hasattr(param, 'lora_B')))),
+                                        if hasattr(param, 'lora_A')))),
                                     kind=reg_type)
 
                                 if 'fixed' in hyp['loss_type']:
@@ -1381,9 +1381,9 @@ def main(args):
 
         lora.mark_only_lora_as_trainable(model) # lora 
 
-        for n,x in model.named_parameters():
-            if 'lora_B' in n:
-                x.requires_grad_(False)
+        # for n,x in model.named_parameters():
+        #     if 'lora_B' in n:
+        #         x.requires_grad_(False)
         
         best_acc_both = train_loop(
             n_epochs = 100_000,

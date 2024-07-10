@@ -21,6 +21,7 @@ from typing import Optional, List, Tuple, Union
 from .wflayer import WFLayer
 from . import wfconv2d as AC2D
 from . import wfhead as AWH
+from peft import LoraConfig, get_peft_model
 
 Tensor = torch.Tensor
 amax,amin=1e1,-1e1
@@ -498,6 +499,8 @@ Greater than .9 -------------------------------------------------
 def prepare_dataset_model(dataset, model):
     if dataset == 'imagenet':
         return 'cifar10', None
+    else:
+        return dataset, None
 
 class WFTransformer(WFModel):
     def __init__(
@@ -512,8 +515,7 @@ class WFTransformer(WFModel):
         )
 
         self.layer_type = AWH.WFHead
-        if imagenet in dataset:
-            dataset = cifar10
+
         if imagenet in dataset:
             if kind==deit_small_16224:
                 vittype='deit_small_patch16_224'
@@ -523,31 +525,37 @@ class WFTransformer(WFModel):
                 )
             elif kind==vit_small_16224:
                 vittype='vit_small_patch16_224'
-                # self.arch = timm.create_model(
-                #     vittype,
-                #     pretrained=True,
+                self.arch = timm.create_model(
+                    vittype,
+                    pretrained=True,
+                )
+                config = LoraConfig(
+                    target_modules=['qkv'],
+                    # modules_to_save=["seq.4"],
+                )
+                
+                self.arch = get_peft_model(self.arch, config)
+
+                # self.arch = ViT(
+                #     image_size = 32,
+                #     patch_size = 4,
+                #     num_classes = classes_number,
+                #     dim = 384,
+                #     depth = 12,
+                #     heads = 8,
+                #     mlp_dim = 384,
+                #     dropout = 0.1,
+                #     emb_dropout = 0.1,
+                #     lora_r = lora_r
                 # )
 
-                self.arch = ViT(
-                    image_size = 32,
-                    patch_size = 4,
-                    num_classes = classes_number,
-                    dim = 384,
-                    depth = 12,
-                    heads = 8,
-                    mlp_dim = 384,
-                    dropout = 0.1,
-                    emb_dropout = 0.1,
-                    lora_r = lora_r
-                )
-
-                if baseline_pretrained:
-                    acab = torch.load(
-                        os.path.join(
-                            '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
-                            'vit_small_equivalent_timm-4-ckpt_original_with_augm.t7'
-                        )
-                    )
+                # if baseline_pretrained:
+                #     acab = torch.load(
+                #         os.path.join(
+                #             '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                #             'vit_small_equivalent_timm-4-ckpt_original_with_augm.t7'
+                #         )
+                #     )
             elif kind==swin_small_16224:
                 vittype='swin_small_patch4_window7_224'
                 self.arch = timm.create_model(
@@ -556,29 +564,35 @@ class WFTransformer(WFModel):
                 )
             elif kind==vit_tiny_16224:
                 vittype='vit_tiny_patch16_224'
-                # self.arch = timm.create_model(
-                #     vittype,
-                #     pretrained=True,
+                self.arch = timm.create_model(
+                    vittype,
+                    pretrained=True,
+                )
+                config = LoraConfig(
+                    target_modules=['qkv'],
+                    # modules_to_save=["seq.4"],
+                )
+                
+                self.arch = get_peft_model(self.arch, config)
+                # self.arch = ViT(
+                #     channels=3,
+                #     image_size = 32,
+                #     patch_size = 4,
+                #     num_classes = classes_number,
+                #     dim = 192,
+                #     depth = 12,
+                #     heads = 8,
+                #     mlp_dim = 192,
+                #     dropout = 0.1,
+                #     emb_dropout = 0.1,
+                #     lora_r = lora_r
                 # )
-                self.arch = ViT(
-                    channels=3,
-                    image_size = 32,
-                    patch_size = 4,
-                    num_classes = classes_number,
-                    dim = 192,
-                    depth = 12,
-                    heads = 8,
-                    mlp_dim = 192,
-                    dropout = 0.1,
-                    emb_dropout = 0.1,
-                    lora_r = lora_r
-                )
-                acab = torch.load(
-                    os.path.join(
-                        '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
-                        'vit_tiny_equivalent_timm-4-ckpt_original_with_augm.t7'
-                    )
-                )
+                # acab = torch.load(
+                #     os.path.join(
+                #         '/work/dnai_explainability/ssarto/checkpoints_full/checkpoint_cifar10',
+                #         'vit_tiny_equivalent_timm-4-ckpt_original_with_augm.t7'
+                #     )
+                # )
                 
         elif cifar10 in dataset:
             classes_number = 10

@@ -92,9 +92,14 @@ def parameters_distance(model:Union[torch.Tensor, Iterable], other:Union[torch.T
         for i, (x,x1) in enumerate(zip(model, other)):
             x, x1 = x.cuda(), x1.cuda()
             if kind.lower() == 'l1':
-                    ret.append(
-                        torch.sum(torch.abs(x - x1)).unsqueeze(0)
-                    )
+                    try:
+                        ret.append(
+                            torch.sum(torch.abs(x - x1)).unsqueeze(0)
+                        )
+                    except:
+                        ret.append(
+                            torch.sum(torch.abs(x.default.weight - x1)).unsqueeze(0)
+                        )
             elif kind.lower() == 'l2':
                     ret.append(
                         torch.sum((x - x1)**2).unsqueeze(0)
@@ -236,7 +241,7 @@ def main(args):
             root, arch_name, datetime.today().strftime("%Y-%m-%d"),
             f'{lambda0}-{lambda1}'
         )
-    dataset, model = prepare_dataset_model(dataset, arch_name)
+    # dataset, model = prepare_dataset_model(dataset, arch_name)
     all_mean_accs = []
     run_root = os.path.join(root, wdb_proj, folder_name)
     if not os.path.isdir(run_root):
@@ -344,18 +349,18 @@ def main(args):
 
             c_to_del = [class_to_delete,]
 
-            size = 32
+            size = 224
             means = [0.485, 0.456, 0.406]
             stds = [0.229, 0.224, 0.225]
             T = transforms.Compose([
-                transforms.Resize(32),
+                transforms.Resize(256),
                 transforms.CenterCrop(size),
                 transforms.ToTensor(),
                 transforms.Normalize(means, stds)
             ])
 
             _T = transforms.Compose([
-                transforms.Resize(32),
+                transforms.Resize(256),
                 transforms.CenterCrop(size),
                 transforms.Normalize(means, stds)
             ])
@@ -1379,7 +1384,10 @@ def main(args):
         else:
             trainset, valset = train, val
 
-        lora.mark_only_lora_as_trainable(model) # lora 
+        if dataset != 'imagenet':
+            lora.mark_only_lora_as_trainable(model) # lora 
+        
+        # breakpoint()
         
         best_acc_both = train_loop(
             n_epochs = 100_000,
